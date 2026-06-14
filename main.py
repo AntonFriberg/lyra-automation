@@ -75,61 +75,91 @@ def run(playwright: Playwright) -> None:
     page.get_by_role("textbox", name="Din e-postadress").press("Tab")
     page.get_by_role("textbox", name="Ditt lösenord").fill(LYRA_PASSWORD)
     page.get_by_role("textbox", name="Ditt lösenord").press("Enter")
-    # Wait for the FullCalendar to render its event elements
-    page.wait_for_selector(".fc-day-grid-event", state="attached", timeout=10_000)
-
-    # Collect booking names from unavailable slots.
-    # The <a> elements report empty innerText (CSS hides text at the anchor level),
-    # so we query the DOM directly.  Available slots have &nbsp; in fc-title — skip those.
-    booking_names: list[str] = page.evaluate(
-        """() => {
-            const titles = document.querySelectorAll('a.unavailable .fc-title');
-            return Array.from(titles)
-                .map(el => el.textContent.trim())
-                .filter(t => t);
-        }"""
-    )
-
-    print(f"Found {len(booking_names)} bookings: {booking_names}")
 
     # Dismiss cookie consent banner if present (may intercept clicks)
     cookie_btn = page.locator(".cc-dismiss")
     if cookie_btn.count():
         cookie_btn.click()
 
-    results: list[dict[str, str]] = []
+    all_results: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()  # (name, iso_date) dedup across months
 
-    for i, name in enumerate(booking_names):
-        # Force-click the i-th unavailable <a> — FullCalendar's CSS clips event
-        # elements so Playwright considers them "not visible", but they work fine.
-        page.locator("a.unavailable").nth(i).click(force=True)
+    for month in range(12):
+        # Navigate to previous month (skip first iteration — already on current)
+        if month > 0:
+            page.get_by_role("button", name="‹").click()
+            page.wait_for_load_state("networkidle")
 
-        # Extract the information that appears after clicking
-        telefon = page.get_by_role("textbox", name="Telefon").input_value()
-        lagenhetsnummer = page.get_by_role(
-            "textbox", name="Lägenhetsnummer"
-        ).input_value()
-
-        date_el = page.locator("span.date")
-        date_text = (date_el.first.text_content() or "") if date_el.count() else ""
-        iso_date = parse_swedish_date(date_text)
-
-        print(
-            f"[{i}] {name}: telefon={telefon}, lägenhet={lagenhetsnummer}, datum={iso_date}"
+        # Ensure the FullCalendar has rendered its event elements.
+        # FullCalendar loads events asynchronously after the grid appears,
+        # so we poll until the count of unavailable elements stabilizes.
+        page.wait_for_selector(
+            ".fc-day-grid-event", state="attached", timeout=10_000
         )
-        results.append(
-            {
-                "name": name,
-                "telefon": telefon,
-                "lagenhetsnummer": lagenhetsnummer,
-                "datum": iso_date,
-            }
+        prev_count = -1
+        for _ in range(10):
+            page.wait_for_timeout(300)
+            count = page.locator("a.unavailable").count()
+            if count == prev_count:
+                break
+            prev_count = count
+
+        # Collect booking names from unavailable slots.
+        booking_names: list[str] = page.evaluate(
+            """() => {
+                const titles = document.querySelectorAll('a.unavailable .fc-title');
+                return Array.from(titles)
+                    .map(el => el.textContent.trim())
+                    .filter(t => t);
+            }"""
         )
 
-        # Close the Remodal via its close button, then wait for Remodal to
-        # finish its internal cleanup (adds remodal-is-closed class).
-        page.locator("[data-remodal-action='close']").click()
-        page.wait_for_selector(".remodal.remodal-is-closed", state="attached", timeout=5_000)
+        print(f"Month {month + 1}/12 — {len(booking_names)} bookings: {booking_names}")
+
+        for i, name in enumerate(booking_names):
+            # Click via JS — FullCalendar elements are often offscreen or
+            # zero-height, which defeats Playwright's coordinate-based click
+            # even with force=True.
+            page.evaluate(
+                """(idx) => {
+                    document.querySelectorAll('a.unavailable')[idx].click();
+                }""",
+                i,
+            )
+            # Wait for the Remodal to fully open before reading fields
+            page.wait_for_selector(
+                ".remodal.remodal-is-opened", state="attached", timeout=5_000
+            )
+
+            telefon = page.get_by_role("textbox", name="Telefon").input_value()
+            lagenhetsnummer = page.get_by_role(
+                "textbox", name="Lägenhetsnummer"
+            ).input_value()
+
+            date_el = page.locator("span.date")
+            date_text = (date_el.first.text_content() or "") if date_el.count() else ""
+            iso_date = parse_swedish_date(date_text)
+
+            key = (name, iso_date)
+            if key not in seen:
+                seen.add(key)
+                all_results.append(
+                    {
+                        "name": name,
+                        "telefon": telefon,
+                        "lagenhetsnummer": lagenhetsnummer,
+                        "datum": iso_date,
+                    }
+                )
+                print(
+                    f"  [{len(all_results)}] {name}: telefon={telefon}, "
+                    f"lägenhet={lagenhetsnummer}, datum={iso_date}"
+                )
+
+            page.locator("[data-remodal-action='close']").click()
+            page.wait_for_selector(
+                ".remodal.remodal-is-closed", state="attached", timeout=5_000
+            )
 
     # Write results to CSV
     csv_path = Path("bookings.csv")
@@ -138,8 +168,8 @@ def run(playwright: Playwright) -> None:
             f, fieldnames=["name", "telefon", "lagenhetsnummer", "datum"]
         )
         writer.writeheader()
-        writer.writerows(results)
-    print(f"Wrote {len(results)} rows to {csv_path}")
+        writer.writerows(all_results)
+    print(f"Wrote {len(all_results)} rows to {csv_path}")
 
     # ---------------------
     context.close()
