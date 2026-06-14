@@ -1,7 +1,7 @@
 [project]
 name = "lyra-automation"
 version = "0.1.0"
-description = "Add your description here"
+description = "Extract guest-apartment bookings from Lyra Smart Brf calendar"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
