@@ -54,6 +54,14 @@ def load_dotenv(path: str | Path = ".env") -> None:
 
 load_dotenv()
 
+# --- Configuration ---
+NUM_MONTHS = 1  # number of calendar months to scan backward
+BASE_URL = (
+    "https://lyra-i-lund.smartbrf.se"
+    "/att-bo-i-lyra/bokning-av-gemensamma-ytor/gastlagenheten#"
+)
+TEST_MODE = False  # only scan 1 month and 1 booking for fast iteration
+
 LYRA_EMAIL = os.environ["LYRA_EMAIL"]
 LYRA_PASSWORD = os.environ["LYRA_PASSWORD"]
 
@@ -68,9 +76,7 @@ def run(playwright: Playwright) -> None:
     )
     context = browser.new_context()
     page = context.new_page()
-    page.goto(
-        "https://lyra-i-lund.smartbrf.se/att-bo-i-lyra/bokning-av-gemensamma-ytor/gastlagenheten#"
-    )
+    page.goto(BASE_URL)
     page.locator("#top_bar").get_by_role("link", name="Logga in").click()
     page.get_by_role("textbox", name="Din e-postadress").fill(LYRA_EMAIL)
     page.get_by_role("textbox", name="Din e-postadress").press("Tab")
@@ -82,10 +88,14 @@ def run(playwright: Playwright) -> None:
     if cookie_btn.count():
         cookie_btn.click()
 
+    if TEST_MODE:
+        print("=== TEST MODE: 1 month, 1 booking ===")
+
     all_results: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()  # (name, iso_date) dedup across months
 
-    for month in range(12):
+    months_to_scan = 1 if TEST_MODE else NUM_MONTHS
+    for month in range(months_to_scan):
         # Navigate to previous month (skip first iteration — already on current)
         if month > 0:
             page.get_by_role("button", name="‹").click()
@@ -115,9 +125,14 @@ def run(playwright: Playwright) -> None:
             }"""
         )
 
-        print(f"Month {month + 1}/12 — {len(booking_names)} bookings: {booking_names}")
+        print(
+            f"Month {month + 1}/{months_to_scan} — "
+            f"{len(booking_names)} bookings: {booking_names}"
+        )
 
         for i, name in enumerate(booking_names):
+            if TEST_MODE and i > 0:
+                break
             # Click via JS — FullCalendar elements are often offscreen or
             # zero-height, which defeats Playwright's coordinate-based click
             # even with force=True.
