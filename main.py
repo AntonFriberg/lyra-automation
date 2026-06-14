@@ -1,6 +1,7 @@
 import csv
 import os
 import re
+from datetime import date
 from pathlib import Path
 from playwright.sync_api import Playwright, sync_playwright
 
@@ -140,6 +141,16 @@ def run(playwright: Playwright) -> None:
             date_text = (date_el.first.text_content() or "") if date_el.count() else ""
             iso_date = parse_swedish_date(date_text)
 
+            # Close the modal before any skip logic so it doesn't stay open
+            page.locator("[data-remodal-action='close']").click()
+            page.wait_for_selector(
+                ".remodal.remodal-is-closed", state="attached", timeout=5_000
+            )
+
+            # Skip future dates
+            if iso_date > str(date.today()):
+                continue
+
             key = (name, iso_date)
             if key not in seen:
                 seen.add(key)
@@ -155,11 +166,6 @@ def run(playwright: Playwright) -> None:
                     f"  [{len(all_results)}] {name}: telefon={telefon}, "
                     f"lägenhet={lagenhetsnummer}, datum={iso_date}"
                 )
-
-            page.locator("[data-remodal-action='close']").click()
-            page.wait_for_selector(
-                ".remodal.remodal-is-closed", state="attached", timeout=5_000
-            )
 
     # Write results to CSV
     csv_path = Path("bookings.csv")
