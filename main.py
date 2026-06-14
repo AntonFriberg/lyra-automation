@@ -92,8 +92,11 @@ def run(playwright: Playwright) -> None:
 
     print(f"Found {len(booking_names)} bookings: {booking_names}")
 
-    # Snapshot the calendar URL so we can return here after each detail view
-    calendar_url = page.url
+    # Dismiss cookie consent banner if present (may intercept clicks)
+    cookie_btn = page.locator(".cc-dismiss")
+    if cookie_btn.count():
+        cookie_btn.click()
+
     results: list[dict[str, str]] = []
 
     for i, name in enumerate(booking_names):
@@ -123,9 +126,10 @@ def run(playwright: Playwright) -> None:
             }
         )
 
-        # Return to the calendar (detail view is in-page JS, not a history entry)
-        page.goto(calendar_url)
-        page.wait_for_selector(".fc-day-grid-event", state="attached", timeout=10_000)
+        # Close the Remodal via its close button, then wait for Remodal to
+        # finish its internal cleanup (adds remodal-is-closed class).
+        page.locator("[data-remodal-action='close']").click()
+        page.wait_for_selector(".remodal.remodal-is-closed", state="attached", timeout=5_000)
 
     # Write results to CSV
     csv_path = Path("bookings.csv")
