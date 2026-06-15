@@ -16,3 +16,4 @@ wheels/
 .venv
 .claude/
 .pytest_cache/
+old_bookings.csv

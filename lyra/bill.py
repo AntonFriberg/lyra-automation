@@ -1,17 +1,12 @@
-"""Enter billing for guest-apartment bookings from bookings.csv into JM Home.
-
-Reads bookings.csv, matches each booking to the correct apartment in the JM
-billing portal's "Välj lägenhet / lokal" dropdown, and creates a 350 SEK
-billing entry with the date in the avitext field.
-"""
+"""Enter billing for guest-apartment bookings from bookings.csv into JM Home."""
 
 import csv
 import re
 from pathlib import Path
 
-from playwright.sync_api import Playwright, Page, sync_playwright
+from playwright.sync_api import Playwright, Page
 
-from config import (
+from .config import (
     CHROMIUM_PATH,
     JM_BILLING_URL,
     JM_EMAIL,
@@ -101,7 +96,7 @@ def _find_best_match(
         return None
     prefix, last4 = parsed
 
-    options = page.locator("select option").all()
+    options = page.locator('[data-test="form-select"] option').all()
     candidates: list[dict] = []  # [{value, text, number, names, dist, has_prefix}]
 
     for opt in options:
@@ -168,14 +163,22 @@ def _login(page: Page) -> None:
     page.locator('[data-test="login-userpw-password"]').fill(JM_PASSWORD)
     page.locator('[data-test="login-userpw-submit"]').click()
     page.wait_for_load_state("networkidle")
-    page.wait_for_timeout(500)
+
+    # The apartment dropdown is populated asynchronously.  Wait until the
+    # option count stabilises (the page has ~90 apartments, so >10 is a
+    # safe signal that the list has finished loading).
+    page.wait_for_function(
+        "() => document.querySelectorAll('select option').length > 10",
+        timeout=10_000,
+    )
+    page.wait_for_timeout(300)
 
 
 # ---------------------------------------------------------------------------
 # Main orchestration
 # ---------------------------------------------------------------------------
 
-def run(playwright: Playwright) -> None:  # noqa: C901
+def run_bill(playwright: Playwright) -> None:  # noqa: C901
     # --- Read bookings ----------------------------------------------------
     csv_path = Path(OUTPUT_CSV)
     if not csv_path.is_file():
@@ -211,13 +214,16 @@ def run(playwright: Playwright) -> None:  # noqa: C901
             continue
         option_value, _ = match
 
-        # Select the apartment from the dropdown
-        page.locator("select").select_option(value=option_value)
-        page.wait_for_timeout(500)
+        # Select the apartment from the dropdown (use data-test to avoid
+        # matching the billing-form combobox which is also a <select>)
+        page.locator('[data-test="form-select"]').select_option(value=option_value)
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(300)
 
         # 2. Create the billing entry
-        #    (follow the codegen-verified flow from billing_example.py)
-        page.get_by_role("button", name="+ Skapa nytt tillägg").click()
+        add_btn = page.get_by_role("button", name="Skapa nytt tillägg")
+        add_btn.wait_for(state="visible")
+        add_btn.click()
         page.wait_for_timeout(300)
 
         page.get_by_role("combobox").select_option("3250")
@@ -230,13 +236,12 @@ def run(playwright: Playwright) -> None:  # noqa: C901
 
         print(f"  Creating: avitext='{avitext}' amount={BILLING_AMOUNT} SEK")
         page.get_by_role("button", name="Spara ").click()
-        page.wait_for_timeout(500)
+
+        # Wait for the save to complete and the form to close, so the
+        # "+ Skapa nytt tillägg" button is available for the next booking.
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(300)
 
     print(f"\nDone — processed {len(bookings)} bookings")
     context.close()
     browser.close()
-
-
-if __name__ == "__main__":
-    with sync_playwright() as playwright:
-        run(playwright)

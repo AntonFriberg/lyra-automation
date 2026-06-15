@@ -2,7 +2,7 @@
 
 import os
 
-from utils import load_dotenv
+from .utils import load_dotenv
 
 # Load secrets from .env so they're available via os.environ
 load_dotenv()

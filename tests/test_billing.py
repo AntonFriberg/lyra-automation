@@ -1,7 +1,7 @@
 """Unit tests for billing.py utility functions."""
 
 import pytest
-from billing import _parse_lgh, _parse_option, _levenshtein
+from lyra.bill import _parse_lgh, _parse_option, _levenshtein
 
 
 # ---------------------------------------------------------------------------

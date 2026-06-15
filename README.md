@@ -29,18 +29,26 @@ cp .env.example .env
 ## Usage
 
 ```bash
-uv run main.py
+uv run python -m lyra extract   # pull bookings from calendar → bookings.csv
+uv run python -m lyra bill      # enter billing from bookings.csv → JM portal
+```
+
+Or with the console script:
+
+```bash
+uv run lyra extract
+uv run lyra bill
 ```
 
 ### Configuration
 
-Edit **`config.py`** , all settings are at the top of that file:
+Edit **`lyra/config.py`** , all settings are at the top of that file:
 
 | Setting | Default | Description |
 |---|---|---|
 | `NUM_MONTHS` | `1` | How many calendar months to scan backward |
 | `TEST_MODE` | `False` | When `True`: scan 1 month, extract 1 booking (fast smoke-test) |
-| `OUTPUT_CSV` | `"bookings.csv"` | Where to write results |
+| `OUTPUT_CSV` | `"bookings.csv"` | Where to write / read CSV |
 | `BASE_URL` | Lyra gästlägenhet | The calendar page URL |
 
 ### Output
@@ -78,9 +86,15 @@ dialogs where a simple HTTP request wouldn't work.
 
 ```
 lyra-automation/
-├── config.py     # All settings — the only file you normally edit
-├── utils.py      # Helpers: .env loading, Swedish date parsing
-├── main.py       # Orchestration — reads top-to-bottom
+├── lyra/
+│   ├── __init__.py
+│   ├── __main__.py   # CLI entry point (extract / bill subcommands)
+│   ├── config.py     # All settings — the only file you normally edit
+│   ├── utils.py      # Helpers: .env loading, Swedish date parsing
+│   ├── extract.py    # Calendar extraction logic
+│   └── bill.py       # Billing entry logic
+├── tests/
+│   └── test_billing.py
 ├── README.md
 └── pyproject.toml
 ```

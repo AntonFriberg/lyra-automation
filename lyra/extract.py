@@ -1,20 +1,12 @@
-"""Extract guest-apartment bookings from Lyra's Smart Brf calendar.
-
- Navigates the FullCalendar month by month, clicks each booked slot to open
- a Remodal detail view, reads the tenant info, and writes everything to CSV.
-
- Usage:
-   uv run main.py          # production run (reads config.py for settings)
-   TEST_MODE=True in config.py  # fast smoke-test: 1 month, 1 booking
-"""
+"""Extract guest-apartment bookings from Lyra's Smart Brf calendar."""
 
 import csv
 from datetime import date
 from pathlib import Path
 
-from playwright.sync_api import Playwright, Page, sync_playwright
+from playwright.sync_api import Playwright, Page
 
-from config import (
+from .config import (
     BASE_URL,
     CHROMIUM_PATH,
     LYRA_EMAIL,
@@ -23,7 +15,7 @@ from config import (
     OUTPUT_CSV,
     TEST_MODE,
 )
-from utils import parse_swedish_date
+from .utils import parse_swedish_date
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +75,7 @@ def _collect_names(page: Page) -> list[str]:
 # Main orchestration
 # ---------------------------------------------------------------------------
 
-def run(playwright: Playwright) -> None:  # noqa: C901
+def run_extract(playwright: Playwright) -> None:  # noqa: C901
     launch_args: dict = {"headless": False}
     if CHROMIUM_PATH:
         launch_args["executable_path"] = CHROMIUM_PATH
@@ -186,8 +178,3 @@ def run(playwright: Playwright) -> None:  # noqa: C901
 
     context.close()
     browser.close()
-
-
-if __name__ == "__main__":
-    with sync_playwright() as playwright:
-        run(playwright)
