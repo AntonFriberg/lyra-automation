@@ -14,6 +14,7 @@ CHROMIUM_PATH = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH", "")
 # --- Booking extraction settings ---------------------------------------------
 NUM_MONTHS = 10       # how many calendar months to scan backward from today
 TEST_MODE = False    # True → 1 month + 1 booking only (fast iteration)
+DRY_RUN = False      # True → print what would be billed, don't actually save
 OUTPUT_CSV = "bookings.csv"
 
 # --- Site URL ----------------------------------------------------------------

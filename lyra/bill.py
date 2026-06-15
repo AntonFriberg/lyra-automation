@@ -14,6 +14,7 @@ from .config import (
     BILLING_ACCOUNT,
     BILLING_AMOUNT,
     BILLING_AVITEXT,
+    DRY_RUN,
     OUTPUT_CSV,
 )
 
@@ -219,6 +220,9 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
 
     _login(page)
 
+    if DRY_RUN:
+        print("=== DRY RUN: nothing will be saved ===")
+
     # --- Determine cutoff date from global table -------------------------
     # The table is newest-first and shows all apartments when unfiltered.
     # Any booking on or before this date has already been billed.
@@ -267,16 +271,14 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
         page.get_by_role("textbox", name="Ange belopp").fill(BILLING_AMOUNT)
 
         print(f"  Creating: avitext='{avitext}' amount={BILLING_AMOUNT} SEK")
-        page.get_by_role("button", name="Spara ").click()
-
-        # Wait for the save to complete and the form to close, so the
-        # "+ Skapa nytt tillägg" button is available for the next booking.
-        page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(300)
-
-        # Advance the cutoff so a restart after a crash won't re-bill
-        # this date, and same-date edge cases within this run are handled.
-        cutoff_date = datum
+        if DRY_RUN:
+            page.get_by_role("button", name="Avbryt").click()
+            page.wait_for_timeout(300)
+        else:
+            page.get_by_role("button", name="Spara ").click()
+            page.wait_for_load_state("networkidle")
+            page.wait_for_timeout(300)
+            cutoff_date = datum  # advance so a restart won't re-bill
 
     print(f"\nDone — processed {len(bookings)} bookings")
     context.close()
