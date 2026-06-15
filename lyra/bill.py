@@ -187,7 +187,10 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
 
     with open(csv_path, newline="", encoding="utf-8") as fh:
         bookings = list(csv.DictReader(fh))
-    print(f"Read {len(bookings)} bookings from {csv_path}")
+
+    # Process oldest first (ISO 8601 dates sort lexicographically)
+    bookings.sort(key=lambda b: b["datum"])
+    print(f"Read {len(bookings)} bookings from {csv_path} (oldest first)")
 
     # --- Launch browser & login ------------------------------------------
     launch_args: dict = {"headless": False}
