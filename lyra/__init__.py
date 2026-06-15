@@ -2,6 +2,12 @@
 
 from playwright.sync_api import Playwright, Page, BrowserContext
 
+# Load .env before any config reads so os.environ is populated.
+# Must happen at import time because config reads env vars at module level.
+from .utils import load_dotenv
+
+load_dotenv()
+
 from .config import CHROMIUM_PATH, HEADLESS
 
 

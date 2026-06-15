@@ -2,11 +2,6 @@
 
 import os
 
-from .utils import load_dotenv
-
-# Load secrets from .env so they're available via os.environ
-load_dotenv()
-
 # --- Credentials (set in .env — see README) ---
 LYRA_EMAIL = os.environ["LYRA_EMAIL"]
 LYRA_PASSWORD = os.environ["LYRA_PASSWORD"]
