@@ -11,6 +11,7 @@ from .config import (
     JM_BILLING_URL,
     JM_EMAIL,
     JM_PASSWORD,
+    BILLING_ACCOUNT,
     BILLING_AMOUNT,
     BILLING_AVITEXT,
     OUTPUT_CSV,
@@ -257,7 +258,7 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
         add_btn.click()
         page.wait_for_timeout(300)
 
-        page.get_by_role("combobox").select_option("3250")
+        page.get_by_role("combobox").select_option(BILLING_ACCOUNT)
         page.wait_for_timeout(200)
 
         avitext = f"{BILLING_AVITEXT} {datum}"

@@ -33,5 +33,6 @@ JM_PASSWORD = os.environ["JM_PASSWORD"]
 JM_BILLING_URL = (
     "https://portal.jmathome.se/kundportal/customer-invoices/billing/extra-costs"
 )
-BILLING_AMOUNT = "350"            # SEK per guest-apartment night
-BILLING_AVITEXT = "Gästlägenhet"  # prefix for the invoice line item text
+BILLING_AMOUNT = "350"                # SEK per guest-apartment night
+BILLING_AVITEXT = "Gästlägenhet"      # prefix for the invoice line item text
+BILLING_ACCOUNT = "3250"              # JM account code for "Guest apartment" area
