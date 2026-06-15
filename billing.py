@@ -26,85 +26,133 @@ from config import (
 # Apartment matching
 # ---------------------------------------------------------------------------
 
-def _apartment_score(option_text: str, csv_name: str, csv_lgh: str) -> float:
-    """Score how well a dropdown option matches a CSV booking entry.
+def _parse_lgh(lgh: str) -> tuple[str, str] | None:
+    """Extract ``(prefix, last4)`` from a lagenhetsnummer like ``"8-1301"``.
+
+    Returns ``None`` if no 4-digit number is present (e.g. ``"Styrelsen"``),
+    which signals that this booking should be skipped.
+    """
+    digits = re.sub(r"[^0-9]", "", lgh)       # "8-1301" → "81301"
+    if len(digits) < 4:
+        return None
+    last4 = digits[-4:]
+    # Prefix = digit immediately before the last 4 (if any)
+    prefix = ""
+    if len(digits) >= 5:
+        prefix = digits[-5]
+    return prefix, last4
+
+
+def _parse_option(option_text: str) -> tuple[str, str]:
+    """Extract ``(opt_number, opt_names)`` from a dropdown option.
 
     *option_text* looks like:
-      ``"Lund, Streetname 3-61105 (Firstname Lastname)"``
+      ``"Lund Pentagonen 3-81301, Street 57 (Firstname Lastname)"``
 
-    Returns a score where higher is better.  A score of 0 means no match.
+    Returns the apartment-number string and the parenthesised names.
     """
-    score = 0.0
-    text_lower = option_text.lower()
-    csv_name_lower = csv_name.lower()
+    # Pull the apartment number: pattern like "3-XXXXX" or "3-XXXX"
+    m = re.search(r"(\d{1,2}-\d{4,5})\b", option_text)
+    opt_number = m.group(1) if m else ""
 
-    # --- Name match (0–50 points) -----------------------------------------
-    # The name is in parentheses at the end.  We check if the CSV name
-    # appears as a substring anywhere in the option text (case-insensitive).
-    if csv_name_lower in text_lower:
-        score += 50
+    # Pull the names inside parentheses
+    m = re.search(r"\(([^)]+)\)", option_text)
+    opt_names = m.group(1).strip() if m else ""
 
-    # --- Apartment-number match (0–50 points) ------------------------------
-    # Extract all digit groups from the CSV lagenhetsnummer.
-    # The option always has a prefix like "3-XXXXX".  We compare the numeric
-    # suffix of each against the CSV value.
-    csv_digits = re.sub(r"[^0-9]", "", csv_lgh)            # e.g. "6-1002" → "61002"
-    if not csv_digits:
-        return score
+    return opt_number, opt_names
 
-    # Pull the apartment number from the option: "3-61105" → "61105"
-    m = re.search(r"(\d{4,6})\b", option_text)
-    if m:
-        opt_digits = m.group(1)                            # e.g. "61105"
-        # How many trailing digits match?
-        common = 0
-        for a, b in zip(reversed(csv_digits), reversed(opt_digits)):
-            if a == b:
-                common += 1
-            else:
-                break
-        # Weight: up to 45 points if 4+ digits match
-        score += min(common, 5) * 9
 
-        # Bonus: exact suffix match (last 4 digits)
-        if csv_digits[-4:] == opt_digits[-4:] and len(csv_digits[-4:]) >= 3:
-            score += 5
-
-    return score
+def _levenshtein(a: str, b: str) -> int:
+    """Levenshtein distance between two strings (case-insensitive)."""
+    a, b = a.lower(), b.lower()
+    if len(a) < len(b):
+        a, b = b, a
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a):
+        cur = [i + 1]
+        for j, cb in enumerate(b):
+            cur.append(min(
+                prev[j + 1] + 1,     # deletion
+                cur[j] + 1,           # insertion
+                prev[j] + (0 if ca == cb else 1),  # substitution
+            ))
+        prev = cur
+    return prev[-1]
 
 
 def _find_best_match(
-    page: Page, csv_name: str, csv_lgh: str
+    page: Page, csv_name: str, csv_lgh: str,
 ) -> tuple[str, str] | None:
     """Return ``(option_value, option_text)`` of the best-matching apartment.
 
-    Prints debug info showing the top candidates considered.
-    Returns ``None`` if no option scores above 0.
+    Strategy:
+    1. Filter by last 4 digits of the lagenhetsnummer (mandatory).
+    2. If a prefix digit exists (e.g. "8" in "8-1301"), prefer matches
+       where that digit appears before the last 4 in the option number.
+    3. Among remaining candidates, pick the one with the smallest
+       Levenshtein distance between the CSV name and the option's names.
+
+    Prints debug info for each booking.
+    Returns ``None`` if no match is found.
     """
+    parsed = _parse_lgh(csv_lgh)
+    if parsed is None:
+        print(f"  Matching '{csv_name}' / '{csv_lgh}': NO 4-DIGIT NUMBER → SKIPPED")
+        return None
+    prefix, last4 = parsed
+
     options = page.locator("select option").all()
-    scored: list[tuple[float, str, str]] = []  # (score, value, text)
+    candidates: list[dict] = []  # [{value, text, number, names, dist, has_prefix}]
 
     for opt in options:
         value = opt.get_attribute("value") or ""
         text = opt.inner_text().strip()
-        if value == "-1" or not text:           # skip the placeholder
+        if value == "-1" or not text:
             continue
-        s = _apartment_score(text, csv_name, csv_lgh)
-        if s > 0:
-            scored.append((s, value, text))
+        opt_number, opt_names = _parse_option(text)
+        if not opt_number or opt_number[-4:] != last4:
+            continue
+        candidates.append({
+            "value": value,
+            "text": text,
+            "number": opt_number,
+            "names": opt_names,
+            "has_prefix": prefix and prefix == opt_number[-5:-4],
+            "dist": _levenshtein(csv_name, opt_names),
+        })
 
-    scored.sort(key=lambda x: x[0], reverse=True)
+    print(f"  Matching '{csv_name}' / '{csv_lgh}'  (prefix={prefix!r} last4={last4}):")
 
-    # Debug: show what we considered
-    print(f"  Matching '{csv_name}' / '{csv_lgh}':")
-    if not scored:
-        print("    NO MATCH FOUND")
+    if not candidates:
+        print(f"    NO MATCH — no option ending in {last4}")
         return None
-    for s, val, txt in scored[:5]:
-        marker = "  ← SELECTED" if s == scored[0][0] else ""
-        print(f"    score={s:5.1f}  value={val:>6s}  {txt[:90]}{marker}")
 
-    return (scored[0][1], scored[0][2])
+    # Separate prefix matches from others
+    with_prefix = [c for c in candidates if c["has_prefix"]]
+    pool = with_prefix if with_prefix else candidates
+
+    # Pick the one with smallest Levenshtein distance
+    pool.sort(key=lambda c: c["dist"])
+    best = pool[0]
+
+    # Debug: show all candidates considered
+    for c in candidates[:8]:
+        flags = []
+        if c["has_prefix"]:
+            flags.append("PREFIX")
+        if c is best:
+            flags.append("← SELECTED")
+        flag_str = " ".join(flags)
+        print(
+            f"    dist={c['dist']:2d}  "
+            f"lgh={c['number']:>7s}  "
+            f"'{c['names'][:50]}'  "
+            f"{flag_str}"
+        )
+    if len(candidates) > 8:
+        print(f"    ... and {len(candidates) - 8} more candidates")
+
+    return best["value"], best["text"]
 
 
 # ---------------------------------------------------------------------------
