@@ -274,5 +274,9 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(300)
 
+        # Advance the cutoff so a restart after a crash won't re-bill
+        # this date, and same-date edge cases within this run are handled.
+        cutoff_date = datum
+
     print(f"\nDone — processed {len(bookings)} bookings")
     context.close()
