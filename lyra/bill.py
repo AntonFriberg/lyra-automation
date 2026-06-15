@@ -154,6 +154,27 @@ def _find_best_match(
 # Page helpers
 # ---------------------------------------------------------------------------
 
+def _latest_billed_date(page: Page) -> str:
+    """Return the latest date from the global billing table (newest-first).
+
+    Before any apartment is selected the table shows all recent billing
+    entries across all apartments.  Since each date can only have one
+    booking, the first Gästlägenhet row gives us the cutoff: any booking
+    on or before this date has already been billed.
+
+    Returns ``"0000-00-00"`` if the table has no Gästlägenhet entries.
+    """
+    rows = page.locator("table tr").all()
+    for row in rows:
+        cells = row.locator("td, th").all()
+        if len(cells) < 2:
+            continue
+        rubric = cells[1].inner_text().strip()
+        if rubric.startswith(BILLING_AVITEXT):
+            return rubric[len(BILLING_AVITEXT):].strip()
+    return "0000-00-00"
+
+
 def _login(page: Page) -> None:
     """Log in to the JM billing portal."""
     page.goto(JM_BILLING_URL)
@@ -202,6 +223,12 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
 
     _login(page)
 
+    # --- Determine cutoff date from global table -------------------------
+    # The table is newest-first and shows all apartments when unfiltered.
+    # Any booking on or before this date has already been billed.
+    cutoff_date = _latest_billed_date(page)
+    print(f"Latest billed date in table: {cutoff_date}")
+
     # --- Process each booking --------------------------------------------
     for idx, booking in enumerate(bookings):
         name = booking["name"]
@@ -209,6 +236,12 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
         datum = booking["datum"]
 
         print(f"\n--- [{idx + 1}/{len(bookings)}] {name} / {lgh} / {datum} ---")
+
+        # Skip if already billed (cutoff from the global unfiltered table,
+        # read once after login).  Check early to avoid wasted work.
+        if datum <= cutoff_date:
+            print(f"  SKIPPED: already billed (cutoff: {cutoff_date})")
+            continue
 
         # 1. Match and select apartment
         match = _find_best_match(page, name, lgh)
