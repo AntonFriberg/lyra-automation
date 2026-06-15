@@ -6,9 +6,9 @@ from pathlib import Path
 
 from playwright.sync_api import Playwright, Page
 
+from . import launch_browser
 from .config import (
     BASE_URL,
-    CHROMIUM_PATH,
     LYRA_EMAIL,
     LYRA_PASSWORD,
     NUM_MONTHS,
@@ -76,12 +76,7 @@ def _collect_names(page: Page) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def run_extract(playwright: Playwright) -> None:  # noqa: C901
-    launch_args: dict = {"headless": False}
-    if CHROMIUM_PATH:
-        launch_args["executable_path"] = CHROMIUM_PATH
-    browser = playwright.chromium.launch(**launch_args)
-    context = browser.new_context()
-    page = context.new_page()
+    context, page = launch_browser(playwright)
 
     _login(page)
 
@@ -177,4 +172,3 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
     print(f"Wrote {len(all_results)} rows to {csv_path}")
 
     context.close()
-    browser.close()

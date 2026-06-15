@@ -6,8 +6,8 @@ from pathlib import Path
 
 from playwright.sync_api import Playwright, Page
 
+from . import launch_browser
 from .config import (
-    CHROMIUM_PATH,
     JM_BILLING_URL,
     JM_EMAIL,
     JM_PASSWORD,
@@ -214,12 +214,7 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
     print(f"Read {len(bookings)} bookings from {csv_path} (oldest first)")
 
     # --- Launch browser & login ------------------------------------------
-    launch_args: dict = {"headless": False}
-    if CHROMIUM_PATH:
-        launch_args["executable_path"] = CHROMIUM_PATH
-    browser = playwright.chromium.launch(**launch_args)
-    context = browser.new_context()
-    page = context.new_page()
+    context, page = launch_browser(playwright)
 
     _login(page)
 
@@ -280,4 +275,3 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
 
     print(f"\nDone — processed {len(bookings)} bookings")
     context.close()
-    browser.close()

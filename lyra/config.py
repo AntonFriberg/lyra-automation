@@ -11,10 +11,9 @@ load_dotenv()
 LYRA_EMAIL = os.environ["LYRA_EMAIL"]
 LYRA_PASSWORD = os.environ["LYRA_PASSWORD"]
 
-# --- Path to Chromium -------------------------------------------------------
-# Leave empty to use the Playwright-bundled Chromium (works on most systems).
-# Set to a custom path if the bundled browser is incompatible with your setup,
-# e.g. on NixOS:  "/home/your-user/.nix-profile/bin/chromium"
+# --- Browser -----------------------------------------------------------------
+HEADLESS = False       # True → run Chromium without a visible window
+# Custom Chromium path (leave empty for Playwright-bundled, set for NixOS etc.)
 CHROMIUM_PATH = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH", "")
 
 # --- Booking extraction settings ---------------------------------------------
