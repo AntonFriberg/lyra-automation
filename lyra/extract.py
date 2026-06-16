@@ -130,6 +130,9 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
             lagenhetsnummer = page.get_by_role(
                 "textbox", name="Lägenhetsnummer",
             ).input_value()
+            epost = (
+                page.locator("#booking_user span.email").text_content() or ""
+            )
 
             date_el = page.locator("span.date")
             date_text = (
@@ -153,12 +156,14 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
                 all_results.append({
                     "name": name,
                     "telefon": telefon,
+                    "epost": epost,
                     "lagenhetsnummer": lagenhetsnummer,
                     "datum": iso_date,
                 })
                 print(
                     f"  [{len(all_results)}] {name}: "
                     f"telefon={telefon}, "
+                    f"epost={epost}, "
                     f"lägenhet={lagenhetsnummer}, "
                     f"datum={iso_date}"
                 )
@@ -167,7 +172,7 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
     csv_path = Path(OUTPUT_CSV)
     with open(csv_path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(
-            fh, fieldnames=["name", "telefon", "lagenhetsnummer", "datum"],
+            fh, fieldnames=["name", "telefon", "epost", "lagenhetsnummer", "datum"],
         )
         writer.writeheader()
         writer.writerows(all_results)
@@ -231,6 +236,9 @@ def run_upcoming(playwright: Playwright) -> None:
             lagenhetsnummer = page.get_by_role(
                 "textbox", name="Lägenhetsnummer",
             ).input_value()
+            epost = (
+                page.locator("#booking_user span.email").text_content() or ""
+            )
 
             date_el = page.locator("span.date")
             date_text = (
@@ -254,12 +262,14 @@ def run_upcoming(playwright: Playwright) -> None:
                 all_results.append({
                     "name": name,
                     "telefon": telefon,
+                    "epost": epost,
                     "lagenhetsnummer": lagenhetsnummer,
                     "datum": iso_date,
                 })
                 print(
                     f"  [{len(all_results)}] {name}: "
                     f"telefon={telefon}, "
+                    f"epost={epost}, "
                     f"lägenhet={lagenhetsnummer}, "
                     f"datum={iso_date}"
                 )
@@ -274,7 +284,7 @@ def run_upcoming(playwright: Playwright) -> None:
     csv_path = Path(UPCOMING_OUTPUT_CSV)
     with open(csv_path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(
-            fh, fieldnames=["name", "telefon", "lagenhetsnummer", "datum"],
+            fh, fieldnames=["name", "telefon", "epost", "lagenhetsnummer", "datum"],
         )
         writer.writeheader()
         writer.writerows(all_results)

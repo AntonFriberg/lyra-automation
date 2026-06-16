@@ -77,6 +77,7 @@ Edit **`lyra/config.py`** — all settings are at the top of that file:
 |---|---|
 | `name` | `Firstname Lastname` |
 | `telefon` | `0701234567` |
+| `epost` | `firstname.lastname@example.com` |
 | `lagenhetsnummer` | `7-1002` |
 | `datum` | `2026-06-04` (ISO 8601) |
 
