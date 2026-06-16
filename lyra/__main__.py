@@ -1,8 +1,11 @@
-"""Entry point: ``uv run python -m lyra <command>``."""
+"""Entry point: ``uv run lyra <command>``."""
 
 import argparse
 
 from playwright.sync_api import sync_playwright
+
+from .extract import run_extract
+from .bill import run_bill
 
 
 def main() -> None:
@@ -16,12 +19,8 @@ def main() -> None:
 
     with sync_playwright() as playwright:
         if args.command == "extract":
-            from .extract import run_extract
-
             run_extract(playwright)
         elif args.command == "bill":
-            from .bill import run_bill
-
             run_bill(playwright)
 
 
