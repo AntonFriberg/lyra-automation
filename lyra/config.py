@@ -32,3 +32,7 @@ JM_BILLING_URL = (
 BILLING_AMOUNT = "350"                # SEK per guest-apartment night
 BILLING_AVITEXT = "Gästlägenhet"      # prefix for the invoice line item text
 BILLING_ACCOUNT = "3250"              # JM account code for "Guest apartment" area
+
+# --- Upcoming bookings extraction ---------------------------------------------
+UPCOMING_DAYS = 13               # how many days ahead to scan (including today)
+UPCOMING_OUTPUT_CSV = "upcoming_bookings.csv"

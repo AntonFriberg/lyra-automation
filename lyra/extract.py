@@ -1,7 +1,7 @@
 """Extract guest-apartment bookings from Lyra's Smart Brf calendar."""
 
 import csv
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from playwright.sync_api import Playwright, Page
@@ -14,6 +14,8 @@ from .config import (
     NUM_MONTHS,
     OUTPUT_CSV,
     TEST_MODE,
+    UPCOMING_DAYS,
+    UPCOMING_OUTPUT_CSV,
 )
 from .utils import parse_swedish_date
 
@@ -163,6 +165,113 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
 
     # --- Write CSV ------------------------------------------------------
     csv_path = Path(OUTPUT_CSV)
+    with open(csv_path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(
+            fh, fieldnames=["name", "telefon", "lagenhetsnummer", "datum"],
+        )
+        writer.writeheader()
+        writer.writerows(all_results)
+    print(f"Wrote {len(all_results)} rows to {csv_path}")
+
+    context.close()
+
+
+# ---------------------------------------------------------------------------
+# Upcoming bookings — next N days
+# ---------------------------------------------------------------------------
+
+def run_upcoming(playwright: Playwright) -> None:
+    """Extract bookings for the next ``UPCOMING_DAYS`` from the calendar.
+
+    Starts from the current month and navigates forward one month if the
+    date window spills across a month boundary.  Writes a separate CSV so
+    the historic ``bookings.csv`` is never overwritten.
+    """
+    context, page = launch_browser(playwright)
+
+    _login(page)
+
+    today = date.today()
+    cutoff = today + timedelta(days=UPCOMING_DAYS)
+    print(f"Scanning {today} → {cutoff} ({UPCOMING_DAYS} days)")
+
+    all_results: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    # At most 2 months: current + next (if the window spills over)
+    for month_idx in range(2):
+        if month_idx > 0:
+            page.get_by_role("button", name="›").click()
+            page.wait_for_load_state("networkidle")
+
+        _wait_for_calendar(page)
+        booking_names = _collect_names(page)
+
+        print(
+            f"Month {month_idx + 1}: "
+            f"{len(booking_names)} bookings: {booking_names}"
+        )
+
+        for i, name in enumerate(booking_names):
+            # Click the booking element via JS
+            page.evaluate(
+                """(idx) => {
+                    document.querySelectorAll('a.unavailable')[idx].click();
+                }""",
+                i,
+            )
+            page.wait_for_selector(
+                ".remodal.remodal-is-opened", state="attached", timeout=5_000,
+            )
+
+            # Read the detail-view fields
+            telefon = page.get_by_role(
+                "textbox", name="Telefon",
+            ).input_value()
+            lagenhetsnummer = page.get_by_role(
+                "textbox", name="Lägenhetsnummer",
+            ).input_value()
+
+            date_el = page.locator("span.date")
+            date_text = (
+                (date_el.first.text_content() or "") if date_el.count() else ""
+            )
+            iso_date = parse_swedish_date(date_text)
+
+            # Close the modal *before* any skip-logic
+            page.locator("[data-remodal-action='close']").click()
+            page.wait_for_selector(
+                ".remodal.remodal-is-closed", state="attached", timeout=5_000,
+            )
+
+            # Only keep dates within [today, cutoff]
+            if iso_date < str(today) or iso_date > str(cutoff):
+                continue
+
+            key = (name, iso_date)
+            if key not in seen:
+                seen.add(key)
+                all_results.append({
+                    "name": name,
+                    "telefon": telefon,
+                    "lagenhetsnummer": lagenhetsnummer,
+                    "datum": iso_date,
+                })
+                print(
+                    f"  [{len(all_results)}] {name}: "
+                    f"telefon={telefon}, "
+                    f"lägenhet={lagenhetsnummer}, "
+                    f"datum={iso_date}"
+                )
+
+        # If the cutoff is still within the current calendar month we're done
+        if month_idx == 0 and (
+            cutoff.month == today.month and cutoff.year == today.year
+        ):
+            break
+
+    # --- Write CSV ------------------------------------------------------
+    csv_path = Path(UPCOMING_OUTPUT_CSV)
     with open(csv_path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(
             fh, fieldnames=["name", "telefon", "lagenhetsnummer", "datum"],

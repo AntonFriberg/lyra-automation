@@ -6,6 +6,8 @@ copy-pasting into a billing portal, for every month of bookings.
 
 - **`extract`** — pulls historic bookings from the [Lyra i Lund](https://lyra-i-lund.smartbrf.se/)
   Smart Brf calendar and writes them to CSV.
+- **`upcoming`** — scans the next 13 days for bookings (navigating forward
+  one month if needed) and writes them to a separate CSV.
 - **`bill`** — reads that CSV, matches each booking to the correct apartment
   in the JM billing portal, and creates the 350 SEK invoice line items —
   skipping any that were already billed.
@@ -38,7 +40,8 @@ cp .env.example .env
 ## Usage
 
 ```bash
-uv run python -m lyra extract   # pull bookings from calendar → bookings.csv
+uv run python -m lyra extract   # pull historic bookings → bookings.csv
+uv run python -m lyra upcoming  # pull next 13 days → upcoming_bookings.csv
 uv run python -m lyra bill      # enter billing from bookings.csv → JM portal
 ```
 
@@ -46,6 +49,7 @@ Or with the console script:
 
 ```bash
 uv run lyra extract
+uv run lyra upcoming
 uv run lyra bill
 ```
 
@@ -62,10 +66,12 @@ Edit **`lyra/config.py`** — all settings are at the top of that file:
 | `HEADLESS` | `False` | Run Chromium without a visible window |
 | `BILLING_AMOUNT` | `"350"` | SEK per guest-apartment night |
 | `BILLING_AVITEXT` | `"Gästlägenhet"` | Prefix for the invoice line item text |
+| `UPCOMING_DAYS` | `13` | How many days ahead `upcoming` scans |
+| `UPCOMING_OUTPUT_CSV` | `"upcoming_bookings.csv"` | Where `upcoming` writes its output |
 
 ### Output
 
-**`bookings.csv`** with columns:
+**`bookings.csv`** and **`upcoming_bookings.csv`** share the same columns:
 
 | Column | Example |
 |---|---|
@@ -99,6 +105,18 @@ HTTP request wouldn't work.
 4. **Write CSV** — deduplicates by `(name, date)`, excludes future dates,
    and converts Swedish dates to ISO 8601.
 
+### Upcoming (`lyra upcoming`)
+
+1. **Login** — same Auth0 login flow as `extract`.
+2. **Scan current month** — waits for FullCalendar to stabilise, then opens
+   each booking's detail view to read the date.
+3. **Next month (if needed)** — when the 13-day window spills into the next
+   calendar month, clicks `›` to navigate forward and repeats step 2.
+4. **Filter** — keeps only bookings whose date falls within [today, today +
+   ``UPCOMING_DAYS``]; skips past dates and dates beyond the cutoff.
+5. **Write CSV** — writes ``upcoming_bookings.csv`` (separate from the
+   historic ``bookings.csv`` used by `extract`).
+
 ### Bill (`lyra bill`)
 
 1. **Login** — navigates to the JM billing portal and waits for the
@@ -119,7 +137,7 @@ HTTP request wouldn't work.
 lyra-automation/
 ├── lyra/
 │   ├── __init__.py    # shared browser launcher
-│   ├── __main__.py    # CLI entry point (extract / bill subcommands)
+│   ├── __main__.py    # CLI entry point (extract / upcoming / bill subcommands)
 │   ├── config.py      # all settings — the only file you normally edit
 │   ├── utils.py       # helpers: .env loading, Swedish date parsing
 │   ├── extract.py     # calendar extraction logic
