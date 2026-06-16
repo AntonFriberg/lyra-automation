@@ -1,8 +1,8 @@
 # Lyra Automation
 
-Two scripts that together eliminate manual data entry for guest-apartment
-bookings — saving multiple hours of clicking through calendar months and
-copy-pasting into a billing portal, for every month of bookings.
+A set of scripts that together eliminate manual work for guest-apartment
+bookings — scraping the calendar, entering billing, and delivering door
+codes — saving hours of repetitive data entry every month.
 
 - **`extract`** — pulls historic bookings from the [Lyra i Lund](https://lyra-i-lund.smartbrf.se/)
   Smart Brf calendar and writes them to CSV.
@@ -11,12 +11,15 @@ copy-pasting into a billing portal, for every month of bookings.
 - **`bill`** — reads that CSV, matches each booking to the correct apartment
   in the JM billing portal, and creates the 350 SEK invoice line items —
   skipping any that were already billed.
+- **`keys`** — reads upcoming bookings, groups consecutive nights by email,
+  creates time-bound access codes via the [Seam](https://seam.co) API on a
+  Yale smart lock, and emails the code to each guest.
 
-Smart Brf and JM@Home Portal has no public API and the calendar requires JavaScript rendering
-to expose booking details.  The JM portal likewise requires browser
-interaction to select apartments and create billing entries.  Both scripts
-use [Playwright](https://playwright.dev/python/) to drive a real Chromium
-browser instead.
+Smart Brf and JM@Home Portal have no public API and require JavaScript
+rendering, so the extract and bill scripts use
+[Playwright](https://playwright.dev/python/) to drive a real Chromium
+browser.  The keys script is pure API — Seam for access codes, Gmail SMTP
+for delivery.
 
 ## Setup
 
@@ -42,6 +45,7 @@ cp .env.example .env
 ```bash
 uv run python -m lyra extract   # pull historic bookings → bookings.csv
 uv run python -m lyra upcoming  # pull next 13 days → upcoming_bookings.csv
+uv run python -m lyra keys      # create access codes & email guests
 uv run python -m lyra bill      # enter billing from bookings.csv → JM portal
 ```
 
@@ -50,6 +54,7 @@ Or with the console script:
 ```bash
 uv run lyra extract
 uv run lyra upcoming
+uv run lyra keys
 uv run lyra bill
 ```
 
@@ -61,13 +66,18 @@ Edit **`lyra/config.py`** — all settings are at the top of that file:
 |---|---|---|
 | `NUM_MONTHS` | `1` | How many calendar months to scan backward |
 | `TEST_MODE` | `False` | Extract: scan 1 month and 1 booking only (fast smoke test) |
-| `DRY_RUN` | `False` | Bill: print what would be billed, don't actually save |
+| `DRY_RUN` | `False` | Bill & keys: preview only, don't save codes or send emails |
 | `OUTPUT_CSV` | `"bookings.csv"` | Where extract writes and bill reads |
 | `HEADLESS` | `False` | Run Chromium without a visible window |
 | `BILLING_AMOUNT` | `"350"` | SEK per guest-apartment night |
 | `BILLING_AVITEXT` | `"Gästlägenhet"` | Prefix for the invoice line item text |
 | `UPCOMING_DAYS` | `13` | How many days ahead `upcoming` scans |
-| `UPCOMING_OUTPUT_CSV` | `"upcoming_bookings.csv"` | Where `upcoming` writes its output |
+| `UPCOMING_OUTPUT_CSV` | `"upcoming_bookings.csv"` | Where `upcoming` writes and `keys` reads |
+| `LOCK_NAME` | `"guest_apartment"` | Yale smart lock name in Seam |
+| `SEAM_API_KEY` | (from `.env`) | Seam API key for access code creation |
+| `GMAIL_USER` | (from `.env`) | Gmail address that sends the codes |
+| `GMAIL_APP_PASSWORD` | (from `.env`) | Gmail app password for SMTP |
+| `SENDER_NAME` | `"Anton Frost"` | Name shown in the email From field |
 
 ### Output
 
@@ -86,12 +96,13 @@ present in the JM portal are skipped.
 
 ## How it works
 
-Both scripts use [Playwright](https://playwright.dev/python/) to drive a
-headful Chromium browser.  Playwright provides high-level APIs for
-navigation (`page.goto`), interaction (`click`, `fill`, `press`), and
-DOM introspection (`page.evaluate`, `page.locator`), making it a good
-fit for sites that rely on JavaScript-rendered interfaces where a simple
-HTTP request wouldn't work.
+The extract and bill scripts use [Playwright](https://playwright.dev/python/)
+to drive a headful Chromium browser.  Playwright provides high-level APIs
+for navigation (`page.goto`), interaction (`click`, `fill`, `press`), and
+DOM introspection (`page.evaluate`, `page.locator`), making it a good fit
+for sites that rely on JavaScript-rendered interfaces where a simple HTTP
+request wouldn't work.  The keys script uses the [Seam](https://seam.co)
+Python SDK and Gmail SMTP instead.
 
 ### Extract (`lyra extract`)
 
@@ -118,6 +129,21 @@ HTTP request wouldn't work.
 5. **Write CSV** — writes ``upcoming_bookings.csv`` (separate from the
    historic ``bookings.csv`` used by `extract`).
 
+### Keys (`lyra keys`)
+
+1. **Read CSV** — loads `upcoming_bookings.csv`.
+2. **Group stays** — sorts by email then date, merging consecutive nights
+   that share the same email into a single stay.
+3. **Create access code** — for each stay, calls the Seam API to create a
+   time-bound PIN on the Yale lock, active from 15:00 on check-in day to
+   12:00 the day after check-out (Europe/Stockholm timezone).
+4. **Skip duplicates** — checks existing codes on the lock and skips stays
+   that already have one.
+5. **Send email** — delivers a Swedish email with the PIN, dates, and
+   instructions to the guest via Gmail SMTP.
+6. **DRY_RUN** — when enabled, prints the grouped stays and exits before
+   touching Seam or sending any email.
+
 ### Bill (`lyra bill`)
 
 1. **Login** — navigates to the JM billing portal and waits for the
@@ -138,11 +164,12 @@ HTTP request wouldn't work.
 lyra-automation/
 ├── lyra/
 │   ├── __init__.py    # shared browser launcher
-│   ├── __main__.py    # CLI entry point (extract / upcoming / bill subcommands)
+│   ├── __main__.py    # CLI entry point (extract / upcoming / bill / keys subcommands)
 │   ├── config.py      # all settings — the only file you normally edit
 │   ├── utils.py       # helpers: .env loading, Swedish date parsing
 │   ├── extract.py     # calendar extraction logic
-│   └── bill.py        # billing entry logic
+│   ├── bill.py        # billing entry logic
+│   └── keys.py        # Seam access codes + email delivery
 ├── tests/
 │   └── test_billing.py
 ├── README.md

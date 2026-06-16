@@ -36,3 +36,12 @@ BILLING_ACCOUNT = "3250"              # JM account code for "Guest apartment" ar
 # --- Upcoming bookings extraction ---------------------------------------------
 UPCOMING_DAYS = 13               # how many days ahead to scan (including today)
 UPCOMING_OUTPUT_CSV = "upcoming_bookings.csv"
+
+# --- Access code keys via Seam ------------------------------------------------
+SEAM_API_KEY = os.environ.get("SEAM_API_KEY", "")
+LOCK_NAME = "guest_apartment"   # name of the Yale smart lock in Seam
+
+# --- Email sending via Gmail SMTP ---------------------------------------------
+GMAIL_USER = os.environ.get("GMAIL_USER", "")              # sender email address
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")  # Gmail app password
+SENDER_NAME = "Anton Frost"
