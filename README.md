@@ -207,24 +207,33 @@ docker run --rm --env-file .env lyra-daily uv run python -m lyra keys
 
 ## Deployment (GitHub Actions)
 
-Two workflows — one builds a container image on each push to master, the
-other pulls and runs it daily.  Completely free for public repos.
+A single scheduled workflow (`.github/workflows/daily.yml`) runs the
+pipeline every morning.  Python packages and Playwright Chromium are
+cached between runs, so only new versions trigger downloads.
 
 ### 1. Add secrets
 
 Go to your repo → Settings → Secrets and variables → Actions → New
 repository secret.  Add every key from your `.env` file.
 
-### 2. How it works
+### 2. Dependency freezing
 
-- **`build.yml`** — on every push to `master`, builds the Docker image
-  and pushes it to `ghcr.io` (GitHub Container Registry, free for public
-  repos).
-- **`daily.yml`** — runs at 7:00 UTC daily, pulls the prebuilt image from
-  ghcr.io and runs `lyra daily`.  No checkout, no pip install, no Chromium
-  download — just pull and run.
+- **Python packages** — locked by `uv.lock` (commit it; `uv sync --frozen`
+  refuses to run if the lockfile is out of date).
+- **Chromium** — locked by the pinned `playwright` version in `uv.lock`.
+  Playwright ships a specific Chromium build per release.
 
-That's it — no billing, no cloud console, no external registry.  Use the
+This means the pipeline won't silently pick up new package or browser
+versions — updates are intentional, via `uv lock --upgrade-package`.
+
+### 3. How it works
+
+`.github/workflows/daily.yml` runs at 7:00 UTC daily:
+1. Checkout the repo
+2. Restore cached `.venv` and Chromium (hit: ~2s; miss: ~40s first time)
+3. Run `lyra daily`
+
+That's it — no billing, no cloud console, no Docker registry.  Use the
 Actions tab to trigger a daily run manually.
 
 ## Project structure
