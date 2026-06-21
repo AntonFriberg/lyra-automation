@@ -14,6 +14,12 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Set image name (lowercase)
+        run: |
+          echo "IMAGE=ghcr.io/${OWNER,,}/lyra-daily:latest" >> $GITHUB_ENV
+        env:
+          OWNER: ${{ github.repository_owner }}
+
       - name: Log in to ghcr.io
         uses: docker/login-action@v3
         with:
@@ -32,4 +38,4 @@ jobs:
           -e GMAIL_USER="${{ secrets.GMAIL_USER }}"
           -e GMAIL_APP_PASSWORD="${{ secrets.GMAIL_APP_PASSWORD }}"
           -e HEADLESS=true
-          ghcr.io/${{ github.repository_owner }}/lyra-daily:latest
+          ${{ env.IMAGE }}
