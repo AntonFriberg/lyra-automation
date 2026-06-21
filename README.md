@@ -14,6 +14,9 @@ codes — saving hours of repetitive data entry every month.
 - **`keys`** — reads upcoming bookings, groups consecutive nights by email,
   creates time-bound access codes via the [Seam](https://seam.co) API on a
   Yale smart lock, and emails the code to each guest.
+- **`daily`** — production pipeline that runs extract + keys + bill in one
+  shot, focused on tomorrow's booking window.  Designed to run as a daily
+  Cloud Run Job triggered by Cloud Scheduler at 9 AM CET.
 
 Smart Brf and JM@Home Portal have no public API and require JavaScript
 rendering, so the extract and bill scripts use
@@ -46,6 +49,7 @@ cp .env.example .env
 uv run python -m lyra extract   # pull historic bookings → bookings.csv
 uv run python -m lyra upcoming  # pull next 13 days → upcoming_bookings.csv
 uv run python -m lyra keys      # create access codes & email guests
+uv run python -m lyra daily     # production: extract + keys + bill in one run
 uv run python -m lyra bill      # enter billing from bookings.csv → JM portal
 ```
 
@@ -55,6 +59,7 @@ Or with the console script:
 uv run lyra extract
 uv run lyra upcoming
 uv run lyra keys
+uv run lyra daily
 uv run lyra bill
 ```
 
@@ -78,6 +83,7 @@ Edit **`lyra/config.py`** — all settings are at the top of that file:
 | `GMAIL_USER` | (from `.env`) | Gmail address that sends the codes |
 | `GMAIL_APP_PASSWORD` | (from `.env`) | Gmail app password for SMTP |
 | `SENDER_NAME` | `"Anton Frost"` | Name shown in the email From field |
+| `DAILY_LOOKAHEAD` | `6` | Days to scan (tomorrow + 5 = max booking length) |
 
 ### Output
 
@@ -144,6 +150,17 @@ Python SDK and Gmail SMTP instead.
 6. **DRY_RUN** — when enabled, prints the grouped stays and exits before
    touching Seam or sending any email.
 
+### Daily (`lyra daily`)
+
+The daily pipeline combines extract, keys, and bill into a single run
+sharing one browser session.  It extracts bookings for tomorrow through
+tomorrow + ``DAILY_LOOKAHEAD - 1`` days, groups consecutive nights into
+stays, creates access codes and sends emails only for stays that **start**
+tomorrow, then enters billing for each night.
+
+Idempotent by design — re-running the same day skips already-created
+codes and already-billed dates.
+
 ### Bill (`lyra bill`)
 
 1. **Login** — navigates to the JM billing portal and waits for the
@@ -158,20 +175,117 @@ Python SDK and Gmail SMTP instead.
    clicks *Spara*.  Skips if already billed, prints debug output for every
    match decision.
 
+## Deployment tools (Nix flake)
+
+A dev shell with Docker for building and testing the container locally:
+
+```bash
+nix develop              # bash
+nix develop --command fish  # fish (if fish is your login shell)
+```
+
+The shell prints available tool versions and first-time setup commands.
+
+## Deployment (Docker)
+
+The `daily` subcommand is packaged as a Docker container.  Playwright's
+own Chromium is used inside the image, so no system browser is needed.
+
+```bash
+# Build the image
+docker build -t lyra-daily .
+
+# Run locally with your .env file
+docker run --rm --env-file .env lyra-daily
+```
+
+```bash
+# Run other subcommands
+docker run --rm --env-file .env lyra-daily uv run python -m lyra upcoming
+docker run --rm --env-file .env lyra-daily uv run python -m lyra keys
+```
+
+## Deployment (GitHub Actions)
+
+The daily pipeline runs on a schedule via GitHub Actions — completely free
+for public repositories (2,000 min/month; one daily run uses ~5).
+
+### 1. Add secrets
+
+Go to your repo → Settings → Secrets and variables → Actions → New
+repository secret.  Add every key from your `.env` file:
+
+| Secret name | Example |
+|---|---|
+| `LYRA_EMAIL` | `your-email@example.com` |
+| `LYRA_PASSWORD` | `your-password` |
+| `JM_EMAIL` | `your-email@example.com` |
+| `JM_PASSWORD` | `your-password` |
+| `SEAM_API_KEY` | `seam_api_key_here` |
+| `GMAIL_USER` | `lyragastlagenhet@gmail.com` |
+| `GMAIL_APP_PASSWORD` | `your-app-password` |
+
+### 2. Add the workflow
+
+Create `.github/workflows/daily.yml`:
+
+```yaml
+name: Daily pipeline
+
+on:
+  schedule:
+    # 7:00 UTC = ~9:00 CET/CEST
+    - cron: "0 7 * * *"
+  workflow_dispatch:  # manual trigger for testing
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install Playwright + Chromium
+        run: |
+          uv sync --frozen --no-dev
+          uv run playwright install --with-deps chromium
+
+      - name: Run daily pipeline
+        env:
+          LYRA_EMAIL: ${{ secrets.LYRA_EMAIL }}
+          LYRA_PASSWORD: ${{ secrets.LYRA_PASSWORD }}
+          JM_EMAIL: ${{ secrets.JM_EMAIL }}
+          JM_PASSWORD: ${{ secrets.JM_PASSWORD }}
+          SEAM_API_KEY: ${{ secrets.SEAM_API_KEY }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          HEADLESS: "true"
+        run: uv run python -m lyra daily
+```
+
+That's it — no billing, no Docker registry, no cloud console.  Push and it
+runs every morning at ~9 AM.  Use the Actions tab to trigger manually.
+
 ## Project structure
 
 ```
 lyra-automation/
 ├── lyra/
 │   ├── __init__.py    # shared browser launcher
-│   ├── __main__.py    # CLI entry point (extract / upcoming / bill / keys subcommands)
+│   ├── __main__.py    # CLI entry point (5 subcommands)
 │   ├── config.py      # all settings — the only file you normally edit
 │   ├── utils.py       # helpers: .env loading, Swedish date parsing
 │   ├── extract.py     # calendar extraction logic
 │   ├── bill.py        # billing entry logic
-│   └── keys.py        # Seam access codes + email delivery
+│   ├── keys.py        # Seam access codes + email delivery
+│   └── daily.py       # production pipeline orchestrator
 ├── tests/
 │   └── test_billing.py
+├── Dockerfile
 ├── README.md
 └── pyproject.toml
 ```

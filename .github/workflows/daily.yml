@@ -1,0 +1,37 @@
+name: Daily pipeline
+
+on:
+  schedule:
+    # 7:00 UTC = ~9:00 CET (winter) / 8:00 CET (summer)
+    - cron: "0 7 * * *"
+  workflow_dispatch:  # manual trigger for testing
+
+permissions: read-all
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install Playwright + Chromium
+        run: |
+          uv sync --frozen --no-dev
+          uv run playwright install --with-deps chromium
+
+      - name: Run daily pipeline
+        env:
+          LYRA_EMAIL: ${{ secrets.LYRA_EMAIL }}
+          LYRA_PASSWORD: ${{ secrets.LYRA_PASSWORD }}
+          JM_EMAIL: ${{ secrets.JM_EMAIL }}
+          JM_PASSWORD: ${{ secrets.JM_PASSWORD }}
+          SEAM_API_KEY: ${{ secrets.SEAM_API_KEY }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          HEADLESS: "true"
+        run: uv run python -m lyra daily
