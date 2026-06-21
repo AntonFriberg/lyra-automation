@@ -1,0 +1,28 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+.venv
+*.egg-info
+
+# Data (generated at runtime)
+*.csv
+*.mp4
+
+# Tests
+tests/
+
+# Docs
+*.md
+!README.md
+
+# Environment (provided via Cloud Run secrets)
+.env
+.env.example
+
+# IDE
+.vscode
+.idea

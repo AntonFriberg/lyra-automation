@@ -7,6 +7,7 @@ from playwright.sync_api import sync_playwright
 from .extract import run_extract, run_upcoming
 from .bill import run_bill
 from .keys import run_keys
+from .daily import run_daily
 
 
 def main() -> None:
@@ -17,6 +18,7 @@ def main() -> None:
     sub.add_parser("upcoming", help="Extract upcoming bookings (next 13 days)")
     sub.add_parser("bill", help="Enter billing from bookings.csv into JM portal")
     sub.add_parser("keys", help="Create Seam access codes and email them to guests")
+    sub.add_parser("daily", help="Daily pipeline: extract + keys + bill in one run")
 
     args = parser.parse_args()
 
@@ -29,6 +31,8 @@ def main() -> None:
             run_bill(playwright)
         elif args.command == "keys":
             run_keys(playwright)
+        elif args.command == "daily":
+            run_daily(playwright)
 
 
 if __name__ == "__main__":

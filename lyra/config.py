@@ -7,7 +7,7 @@ LYRA_EMAIL = os.environ["LYRA_EMAIL"]
 LYRA_PASSWORD = os.environ["LYRA_PASSWORD"]
 
 # --- Browser -----------------------------------------------------------------
-HEADLESS = False       # True → run Chromium without a visible window
+HEADLESS = os.environ.get("HEADLESS", "false").lower() == "true"  # no visible window
 # Custom Chromium path (leave empty for Playwright-bundled, set for NixOS etc.)
 CHROMIUM_PATH = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH", "")
 
@@ -45,3 +45,6 @@ LOCK_NAME = "guest_apartment"   # name of the Yale smart lock in Seam
 GMAIL_USER = os.environ.get("GMAIL_USER", "")              # sender email address
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")  # Gmail app password
 SENDER_NAME = "Anton Frost"
+
+# --- Daily production pipeline ------------------------------------------------
+DAILY_LOOKAHEAD = 6    # tomorrow + 5 days = max booking length (6 nights)
