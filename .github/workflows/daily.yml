@@ -4,7 +4,7 @@ on:
   schedule:
     # 7:00 UTC = ~9:00 CET (winter) / 8:00 CET (summer)
     - cron: "0 7 * * *"
-  workflow_dispatch:  # manual trigger for testing
+  workflow_dispatch:
 
 permissions: read-all
 
@@ -14,24 +14,22 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: Install Playwright + Chromium
-        run: |
-          uv sync --frozen --no-dev
-          uv run playwright install --with-deps chromium
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run daily pipeline
-        env:
-          LYRA_EMAIL: ${{ secrets.LYRA_EMAIL }}
-          LYRA_PASSWORD: ${{ secrets.LYRA_PASSWORD }}
-          JM_EMAIL: ${{ secrets.JM_EMAIL }}
-          JM_PASSWORD: ${{ secrets.JM_PASSWORD }}
-          SEAM_API_KEY: ${{ secrets.SEAM_API_KEY }}
-          GMAIL_USER: ${{ secrets.GMAIL_USER }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          HEADLESS: "true"
-        run: uv run python -m lyra daily
+        run: >
+          docker run --rm
+          -e LYRA_EMAIL="${{ secrets.LYRA_EMAIL }}"
+          -e LYRA_PASSWORD="${{ secrets.LYRA_PASSWORD }}"
+          -e JM_EMAIL="${{ secrets.JM_EMAIL }}"
+          -e JM_PASSWORD="${{ secrets.JM_PASSWORD }}"
+          -e SEAM_API_KEY="${{ secrets.SEAM_API_KEY }}"
+          -e GMAIL_USER="${{ secrets.GMAIL_USER }}"
+          -e GMAIL_APP_PASSWORD="${{ secrets.GMAIL_APP_PASSWORD }}"
+          -e HEADLESS=true
+          ghcr.io/${{ github.repository_owner }}/lyra-daily:latest

@@ -207,68 +207,25 @@ docker run --rm --env-file .env lyra-daily uv run python -m lyra keys
 
 ## Deployment (GitHub Actions)
 
-The daily pipeline runs on a schedule via GitHub Actions — completely free
-for public repositories (2,000 min/month; one daily run uses ~5).
+Two workflows — one builds a container image on each push to master, the
+other pulls and runs it daily.  Completely free for public repos.
 
 ### 1. Add secrets
 
 Go to your repo → Settings → Secrets and variables → Actions → New
-repository secret.  Add every key from your `.env` file:
+repository secret.  Add every key from your `.env` file.
 
-| Secret name | Example |
-|---|---|
-| `LYRA_EMAIL` | `your-email@example.com` |
-| `LYRA_PASSWORD` | `your-password` |
-| `JM_EMAIL` | `your-email@example.com` |
-| `JM_PASSWORD` | `your-password` |
-| `SEAM_API_KEY` | `seam_api_key_here` |
-| `GMAIL_USER` | `lyragastlagenhet@gmail.com` |
-| `GMAIL_APP_PASSWORD` | `your-app-password` |
+### 2. How it works
 
-### 2. Add the workflow
+- **`build.yml`** — on every push to `master`, builds the Docker image
+  and pushes it to `ghcr.io` (GitHub Container Registry, free for public
+  repos).
+- **`daily.yml`** — runs at 7:00 UTC daily, pulls the prebuilt image from
+  ghcr.io and runs `lyra daily`.  No checkout, no pip install, no Chromium
+  download — just pull and run.
 
-Create `.github/workflows/daily.yml`:
-
-```yaml
-name: Daily pipeline
-
-on:
-  schedule:
-    # 7:00 UTC = ~9:00 CET/CEST
-    - cron: "0 7 * * *"
-  workflow_dispatch:  # manual trigger for testing
-
-jobs:
-  daily:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: Install Playwright + Chromium
-        run: |
-          uv sync --frozen --no-dev
-          uv run playwright install --with-deps chromium
-
-      - name: Run daily pipeline
-        env:
-          LYRA_EMAIL: ${{ secrets.LYRA_EMAIL }}
-          LYRA_PASSWORD: ${{ secrets.LYRA_PASSWORD }}
-          JM_EMAIL: ${{ secrets.JM_EMAIL }}
-          JM_PASSWORD: ${{ secrets.JM_PASSWORD }}
-          SEAM_API_KEY: ${{ secrets.SEAM_API_KEY }}
-          GMAIL_USER: ${{ secrets.GMAIL_USER }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          HEADLESS: "true"
-        run: uv run python -m lyra daily
-```
-
-That's it — no billing, no Docker registry, no cloud console.  Push and it
-runs every morning at ~9 AM.  Use the Actions tab to trigger manually.
+That's it — no billing, no cloud console, no external registry.  Use the
+Actions tab to trigger a daily run manually.
 
 ## Project structure
 
