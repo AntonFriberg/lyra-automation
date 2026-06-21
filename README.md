@@ -230,8 +230,12 @@ versions — updates are intentional, via `uv lock --upgrade-package`.
 
 `.github/workflows/daily.yml` runs at 7:00 UTC daily:
 1. Checkout the repo
-2. Restore cached `.venv` and Chromium (hit: ~2s; miss: ~40s first time)
-3. Run `lyra daily`
+2. Restore uv package cache via `setup-uv` (built-in, keyed on `uv.lock`)
+3. Run `uv sync` (fast with cache hit) + `playwright install chromium`
+4. Run `lyra daily`
+
+Playwright browsers are not cached (per Playwright's own recommendation —
+cache restore time is comparable to download time).
 
 That's it — no billing, no cloud console, no Docker registry.  Use the
 Actions tab to trigger a daily run manually.
