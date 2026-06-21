@@ -23,9 +23,27 @@ jobs:
           prune-cache: true
 
       - name: Install dependencies
+        run: uv sync --frozen --no-dev
+
+      - name: Get Playwright version
+        id: playwright-version
         run: |
-          uv sync --frozen --no-dev
-          uv run playwright install --with-deps chromium
+          echo "version=$(uv run python -c 'import playwright; print(playwright.__version__)')" >> $GITHUB_OUTPUT
+
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
+      - name: Install Playwright Chromium
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            uv run playwright install chromium          # binary cached; skip OS deps
+          else
+            uv run playwright install --with-deps chromium
+          fi
 
       - name: Run daily pipeline
         env:
