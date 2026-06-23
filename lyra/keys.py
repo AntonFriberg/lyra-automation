@@ -198,15 +198,23 @@ def run_keys(playwright: Playwright) -> None:  # noqa: C901
     device = devices[0]
     print(f"\nLock: {device.display_name} ({device.device_id})")
 
-    # Fetch existing codes so we can skip stays that already have one
+    # Fetch existing codes so we can skip stays already covered.
+    # Compare date ranges, not names — the lock only serves one
+    # apartment, so any overlap means the date is already covered.
     try:
-        existing = seam.access_codes.list(device_id=device.device_id)
-        existing_names: set[str] = {
-            ac.name for ac in existing if ac.name  # type: ignore[assignment]
-        }
+        existing_codes = seam.access_codes.list(device_id=device.device_id)
+        existing_ranges: list[tuple[datetime, datetime]] = []
+        for ac in existing_codes:
+            if ac.starts_at and ac.ends_at:
+                try:
+                    s = datetime.fromisoformat(ac.starts_at)
+                    e = datetime.fromisoformat(ac.ends_at)
+                    existing_ranges.append((s, e))
+                except ValueError:
+                    pass
     except Exception:
         print("WARNING: could not list existing codes — will not skip any")
-        existing_names = set()
+        existing_ranges = []
 
     # --- Process each stay ------------------------------------------------
     for idx, stay in enumerate(stays):
@@ -221,9 +229,12 @@ def run_keys(playwright: Playwright) -> None:  # noqa: C901
             f"Gästlägenhet: {stay['name']} ({stay['start_date']})"
         )
 
-        # Idempotency: skip if we already created this code
-        if code_name in existing_names:
-            print(f"  SKIP: code already exists for '{code_name}'")
+        # Skip if this stay's window overlaps any existing code
+        overlapping = any(
+            s < end_dt and start_dt < e for s, e in existing_ranges
+        )
+        if overlapping:
+            print(f"  SKIP: date range already covered by existing code")
             continue
 
         # --- Create access code via Seam ---------------------------------
@@ -247,7 +258,7 @@ def run_keys(playwright: Playwright) -> None:  # noqa: C901
             continue
 
         print(f"  Code:     {entry_code}")
-        existing_names.add(code_name)
+        existing_ranges.append((start_dt, end_dt))
 
         # --- Send email ---------------------------------------------------
         # The email shows the check-*out* date, which is the day after the

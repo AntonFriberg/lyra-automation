@@ -213,14 +213,19 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
 
     try:
         existing_codes = seam.access_codes.list(device_id=device.device_id)
-        existing_names: set[str] = {
-            ac.name
-            for ac in existing_codes
-            if ac.name  # type: ignore[assignment]
-        }
+        # Keep only codes with populated date fields
+        existing_ranges: list[tuple[datetime, datetime]] = []
+        for ac in existing_codes:
+            if ac.starts_at and ac.ends_at:
+                try:
+                    s = datetime.fromisoformat(ac.starts_at)
+                    e = datetime.fromisoformat(ac.ends_at)
+                    existing_ranges.append((s, e))
+                except ValueError:
+                    pass
     except Exception:
         print("  WARNING: could not list existing codes")
-        existing_names = set()
+        existing_ranges = []
 
     for idx, stay in enumerate(tomorrow_stays):
         print(
@@ -233,8 +238,14 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
             f"Gästlägenhet: {stay['name']} ({stay['start_date']})"
         )
 
-        if code_name in existing_names:
-            print(f"    SKIP: code already exists")
+        # Skip if this stay's time window overlaps any existing code.
+        # The lock only serves one apartment, so any overlap means the
+        # date is already covered — no need to match by guest name.
+        overlapping = any(
+            s < end_dt and start_dt < e for s, e in existing_ranges
+        )
+        if overlapping:
+            print(f"    SKIP: date range already covered by existing code")
             continue
 
         # Create code
@@ -258,7 +269,7 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
             continue
 
         print(f"    Code:     {entry_code}")
-        existing_names.add(code_name)
+        existing_ranges.append((start_dt, end_dt))
 
         # Send email
         checkout_date = end_dt.strftime("%Y-%m-%d")
