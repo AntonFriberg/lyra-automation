@@ -1,8 +1,8 @@
-"""Pure helper functions with no side effects (except load_dotenv)."""
+"""Pure helper functions."""
 
-import os
 import re
-from pathlib import Path
+
+from dotenv import load_dotenv  # noqa: F401 — re-exported
 
 SV_MONTHS: dict[str, int] = {
     "januari": 1,
@@ -18,28 +18,6 @@ SV_MONTHS: dict[str, int] = {
     "november": 11,
     "december": 12,
 }
-
-
-def load_dotenv(path: str | Path = ".env") -> None:
-    """Parse KEY=VALUE lines from *path* into ``os.environ``.
-
-    Skips empty lines, comments (``#``), and lines without ``=``.
-    Strips surrounding single or double quotes from values.
-    """
-    env_path = Path(path)
-    if not env_path.is_file():
-        return
-    with open(env_path) as fh:
-        for raw in fh:
-            line = raw.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            key = key.strip()
-            value = value.strip()
-            if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
-                value = value[1:-1]
-            os.environ[key] = value
 
 
 def parse_swedish_date(text: str) -> str:

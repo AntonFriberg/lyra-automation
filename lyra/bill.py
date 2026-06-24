@@ -203,7 +203,7 @@ def _latest_billed_date(page: Page) -> str:
     return "0000-00-00"
 
 
-def _login(page: Page) -> None:
+def _login_jmhome(page: Page) -> None:
     """Log in to the JM billing portal."""
     page.goto(JM_BILLING_URL)
     page.locator('[data-test="login-userpw"]').click()
@@ -253,7 +253,7 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
     # --- Launch browser & login ------------------------------------------
     context, page = launch_browser(playwright)
 
-    _login(page)
+    _login_jmhome(page)
 
     if DRY_RUN:
         log.warning("=== DRY RUN: nothing will be saved ===")

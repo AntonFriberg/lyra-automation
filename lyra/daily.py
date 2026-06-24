@@ -17,9 +17,7 @@ from . import launch_browser
 from .bill import (
     _find_best_match,
     _latest_billed_date,
-)
-from .bill import (
-    _login as _login_jmhome,
+    _login_jmhome,
 )
 from .config import (
     BILLING_ACCOUNT,
@@ -35,10 +33,8 @@ from .config import (
 from .extract import (
     _collect_names,
     _extract_booking,
+    _login_smartbrf,
     _wait_for_calendar,
-)
-from .extract import (
-    _login as _login_smartbrf,
 )
 from .keys import (
     EMAIL_TEMPLATE,

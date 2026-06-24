@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _login(page: Page) -> None:
+def _login_smartbrf(page: Page) -> None:
     """Log in via the Auth0 form that appears on unauthenticated visits."""
     page.goto(BASE_URL)
     page.locator("#top_bar").get_by_role("link", name="Logga in").click()
@@ -150,7 +150,7 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
     validate("LYRA_EMAIL", "LYRA_PASSWORD")
     context, page = launch_browser(playwright)
 
-    _login(page)
+    _login_smartbrf(page)
 
     if TEST_MODE:
         log.warning("=== TEST MODE: 1 month, 1 booking ===")
@@ -240,7 +240,7 @@ def run_upcoming(playwright: Playwright) -> None:  # noqa: C901
     validate("LYRA_EMAIL", "LYRA_PASSWORD")
     context, page = launch_browser(playwright)
 
-    _login(page)
+    _login_smartbrf(page)
 
     today = date.today()
     cutoff = today + timedelta(days=UPCOMING_DAYS)
