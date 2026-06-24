@@ -27,6 +27,7 @@ log = logging.getLogger(__name__)
 # Small helpers — named actions that keep run() readable
 # ---------------------------------------------------------------------------
 
+
 def _login(page: Page) -> None:
     """Log in via the Auth0 form that appears on unauthenticated visits."""
     page.goto(BASE_URL)
@@ -44,7 +45,9 @@ def _login(page: Page) -> None:
     # Verify login succeeded — calendar grid must appear
     try:
         page.wait_for_selector(
-            ".fc-day-grid-event", state="attached", timeout=10_000,
+            ".fc-day-grid-event",
+            state="attached",
+            timeout=10_000,
         )
     except Exception as exc:
         raise RuntimeError(
@@ -104,24 +107,27 @@ def _extract_booking(page: Page, index: int) -> dict[str, str]:
         index,
     )
     page.wait_for_selector(
-        ".remodal.remodal-is-opened", state="attached", timeout=5_000,
+        ".remodal.remodal-is-opened",
+        state="attached",
+        timeout=5_000,
     )
 
     telefon = page.get_by_role("textbox", name="Telefon").input_value()
     lagenhetsnummer = page.get_by_role(
-        "textbox", name="Lägenhetsnummer",
+        "textbox",
+        name="Lägenhetsnummer",
     ).input_value()
     epost = page.locator("#booking_user span.email").text_content() or ""
 
     date_el = page.locator("span.date")
-    date_text = (
-        (date_el.first.text_content() or "") if date_el.count() else ""
-    )
+    date_text = (date_el.first.text_content() or "") if date_el.count() else ""
     iso_date = parse_swedish_date(date_text)
 
     page.locator("[data-remodal-action='close']").click()
     page.wait_for_selector(
-        ".remodal.remodal-is-closed", state="attached", timeout=5_000,
+        ".remodal.remodal-is-closed",
+        state="attached",
+        timeout=5_000,
     )
 
     return {
@@ -142,12 +148,11 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
         log.warning("=== TEST MODE: 1 month, 1 booking ===")
 
     all_results: list[dict[str, str]] = []
-    seen: set[tuple[str, str]] = set()          # (name, iso_date) dedup
+    seen: set[tuple[str, str]] = set()  # (name, iso_date) dedup
     months_to_scan = 1 if TEST_MODE else NUM_MONTHS
 
     # --- Scan each month ------------------------------------------------
     for month_idx in range(months_to_scan):
-
         # Navigate to previous month (skip the very first — we're already there)
         if month_idx > 0:
             page.get_by_role("button", name="‹").click()
@@ -158,8 +163,10 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
 
         log.info(
             "Month %d/%d — %d bookings: %s",
-            month_idx + 1, months_to_scan,
-            len(booking_names), booking_names,
+            month_idx + 1,
+            months_to_scan,
+            len(booking_names),
+            booking_names,
         )
 
         # --- Extract each booking in the current month ------------------
@@ -172,29 +179,36 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
 
             # --- Filter & deduplicate -----------------------------------
             if iso_date > str(date.today()):
-                continue            # skip future bookings
+                continue  # skip future bookings
 
             key = (name, iso_date)
             if key not in seen:
                 seen.add(key)
-                all_results.append({
-                    "name": name,
-                    "telefon": fields["telefon"],
-                    "epost": fields["epost"],
-                    "lagenhetsnummer": fields["lagenhetsnummer"],
-                    "datum": iso_date,
-                })
+                all_results.append(
+                    {
+                        "name": name,
+                        "telefon": fields["telefon"],
+                        "epost": fields["epost"],
+                        "lagenhetsnummer": fields["lagenhetsnummer"],
+                        "datum": iso_date,
+                    }
+                )
                 log.debug(
                     "  [%d] %s: telefon=%s epost=%s lägenhet=%s datum=%s",
-                    len(all_results), name, fields["telefon"],
-                    fields["epost"], fields["lagenhetsnummer"], iso_date,
+                    len(all_results),
+                    name,
+                    fields["telefon"],
+                    fields["epost"],
+                    fields["lagenhetsnummer"],
+                    iso_date,
                 )
 
     # --- Write CSV ------------------------------------------------------
     csv_path = Path(OUTPUT_CSV)
     with open(csv_path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(
-            fh, fieldnames=["name", "telefon", "epost", "lagenhetsnummer", "datum"],
+            fh,
+            fieldnames=["name", "telefon", "epost", "lagenhetsnummer", "datum"],
         )
         writer.writeheader()
         writer.writerows(all_results)
@@ -206,6 +220,7 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
 # ---------------------------------------------------------------------------
 # Upcoming bookings — next N days
 # ---------------------------------------------------------------------------
+
 
 def run_upcoming(playwright: Playwright) -> None:  # noqa: C901
     """Extract bookings for the next ``UPCOMING_DAYS`` from the calendar.
@@ -237,7 +252,9 @@ def run_upcoming(playwright: Playwright) -> None:  # noqa: C901
 
         log.info(
             "Month %d: %d bookings: %s",
-            month_idx + 1, len(booking_names), booking_names,
+            month_idx + 1,
+            len(booking_names),
+            booking_names,
         )
 
         for i, name in enumerate(booking_names):
@@ -251,17 +268,23 @@ def run_upcoming(playwright: Playwright) -> None:  # noqa: C901
             key = (name, iso_date)
             if key not in seen:
                 seen.add(key)
-                all_results.append({
-                    "name": name,
-                    "telefon": fields["telefon"],
-                    "epost": fields["epost"],
-                    "lagenhetsnummer": fields["lagenhetsnummer"],
-                    "datum": iso_date,
-                })
+                all_results.append(
+                    {
+                        "name": name,
+                        "telefon": fields["telefon"],
+                        "epost": fields["epost"],
+                        "lagenhetsnummer": fields["lagenhetsnummer"],
+                        "datum": iso_date,
+                    }
+                )
                 log.debug(
                     "  [%d] %s: telefon=%s epost=%s lägenhet=%s datum=%s",
-                    len(all_results), name, fields["telefon"],
-                    fields["epost"], fields["lagenhetsnummer"], iso_date,
+                    len(all_results),
+                    name,
+                    fields["telefon"],
+                    fields["epost"],
+                    fields["lagenhetsnummer"],
+                    iso_date,
                 )
 
         # If the cutoff is still within the current calendar month we're done
@@ -274,7 +297,8 @@ def run_upcoming(playwright: Playwright) -> None:  # noqa: C901
     csv_path = Path(UPCOMING_OUTPUT_CSV)
     with open(csv_path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(
-            fh, fieldnames=["name", "telefon", "epost", "lagenhetsnummer", "datum"],
+            fh,
+            fieldnames=["name", "telefon", "epost", "lagenhetsnummer", "datum"],
         )
         writer.writeheader()
         writer.writerows(all_results)

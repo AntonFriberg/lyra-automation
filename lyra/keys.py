@@ -72,6 +72,7 @@ Ledamot BRF Lyra
 # Stay grouping
 # ---------------------------------------------------------------------------
 
+
 def _group_stays(bookings: list[dict]) -> list[dict]:
     """Group consecutive dates that share the same email into stays.
 
@@ -90,7 +91,8 @@ def _group_stays(bookings: list[dict]) -> list[dict]:
 
         if stays and stays[-1]["epost"] == epost:
             last_end = datetime.strptime(
-                stays[-1]["end_date"], "%Y-%m-%d",
+                stays[-1]["end_date"],
+                "%Y-%m-%d",
             ).date()
             current = datetime.strptime(datum, "%Y-%m-%d").date()
             if current == last_end + timedelta(days=1):
@@ -98,15 +100,17 @@ def _group_stays(bookings: list[dict]) -> list[dict]:
                 stays[-1]["nights"] += 1
                 continue
 
-        stays.append({
-            "first_name": first_name,
-            "epost": epost,
-            "start_date": datum,
-            "end_date": datum,
-            "nights": 1,
-            "name": name,
-            "lagenhetsnummer": b.get("lagenhetsnummer", ""),
-        })
+        stays.append(
+            {
+                "first_name": first_name,
+                "epost": epost,
+                "start_date": datum,
+                "end_date": datum,
+                "nights": 1,
+                "name": name,
+                "lagenhetsnummer": b.get("lagenhetsnummer", ""),
+            }
+        )
 
     return stays
 
@@ -114,6 +118,7 @@ def _group_stays(bookings: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Time helpers
 # ---------------------------------------------------------------------------
+
 
 def _compute_times(stay: dict) -> tuple[datetime, datetime]:
     """Return *(starts_at, ends_at)* as timezone-aware datetimes.
@@ -125,7 +130,8 @@ def _compute_times(stay: dict) -> tuple[datetime, datetime]:
     end_date = datetime.strptime(stay["end_date"], "%Y-%m-%d").date()
 
     start_dt = datetime.combine(
-        start_date, datetime.strptime("15:00", "%H:%M").time(),
+        start_date,
+        datetime.strptime("15:00", "%H:%M").time(),
     ).replace(tzinfo=TZ)
 
     end_dt = datetime.combine(
@@ -139,6 +145,7 @@ def _compute_times(stay: dict) -> tuple[datetime, datetime]:
 # ---------------------------------------------------------------------------
 # Email
 # ---------------------------------------------------------------------------
+
 
 def _send_email(to_email: str, subject: str, body: str) -> None:
     """Send a plain-text email via Gmail SMTP (STARTTLS on port 587)."""
@@ -158,6 +165,7 @@ def _send_email(to_email: str, subject: str, body: str) -> None:
 # ---------------------------------------------------------------------------
 # Seam helper with retry
 # ---------------------------------------------------------------------------
+
 
 def _create_access_code(
     seam: Seam,
@@ -193,7 +201,10 @@ def _create_access_code(
                 delay = 2 ** (attempt - 1)  # 1s, 2s, 4s
                 log.warning(
                     "Seam API error (attempt %d/%d), retrying in %ds: %s",
-                    attempt, retries, delay, exc,
+                    attempt,
+                    retries,
+                    delay,
+                    exc,
                 )
                 time.sleep(delay)
     raise last_exc  # type: ignore[misc]
@@ -202,6 +213,7 @@ def _create_access_code(
 # ---------------------------------------------------------------------------
 # Main orchestration
 # ---------------------------------------------------------------------------
+
 
 def run_keys(playwright: Playwright) -> None:  # noqa: C901
     """Create Seam access codes for upcoming bookings and email them.
@@ -226,13 +238,18 @@ def run_keys(playwright: Playwright) -> None:  # noqa: C901
 
     stays = _group_stays(bookings)
     log.info(
-        "Grouped %d booking(s) into %d stay(s):", len(bookings), len(stays),
+        "Grouped %d booking(s) into %d stay(s):",
+        len(bookings),
+        len(stays),
     )
     for s in stays:
         log.info(
             "  %s (%s): %s → %s  (%d night(s))",
-            s["first_name"], s["epost"], s["start_date"],
-            s["end_date"], s["nights"],
+            s["first_name"],
+            s["epost"],
+            s["start_date"],
+            s["end_date"],
+            s["nights"],
         )
 
     if DRY_RUN:
@@ -272,19 +289,18 @@ def run_keys(playwright: Playwright) -> None:  # noqa: C901
     for idx, stay in enumerate(stays):
         log.info(
             "--- [%d/%d] %s  (%s → %s) ---",
-            idx + 1, len(stays), stay["first_name"],
-            stay["start_date"], stay["end_date"],
+            idx + 1,
+            len(stays),
+            stay["first_name"],
+            stay["start_date"],
+            stay["end_date"],
         )
 
         start_dt, end_dt = _compute_times(stay)
-        code_name = (
-            f"Gästlägenhet: {stay['name']} ({stay['start_date']})"
-        )
+        code_name = f"Gästlägenhet: {stay['name']} ({stay['start_date']})"
 
         # Skip if this stay's window overlaps any existing code
-        overlapping = any(
-            s < end_dt and start_dt < e for s, e in existing_ranges
-        )
+        overlapping = any(s < end_dt and start_dt < e for s, e in existing_ranges)
         if overlapping:
             log.info("  SKIP: date range already covered by existing code")
             continue
@@ -312,10 +328,7 @@ def run_keys(playwright: Playwright) -> None:  # noqa: C901
         # The email shows the check-*out* date, which is the day after the
         # last night (already computed in end_dt by _compute_times).
         checkout_date = end_dt.strftime("%Y-%m-%d")
-        subject = (
-            f"Kod till gästlägenheten "
-            f"{stay['start_date']} - {checkout_date}"
-        )
+        subject = f"Kod till gästlägenheten {stay['start_date']} - {checkout_date}"
         nights = stay["nights"]
         nights_text = f"{nights} natt" if nights == 1 else f"{nights} nätter"
         body = EMAIL_TEMPLATE.format(

@@ -25,10 +25,10 @@ def validate(*keys: str) -> None:
 
 
 # --- Credentials (set in .env — see README) ----------------------------------
-LYRA_EMAIL    = os.environ.get("LYRA_EMAIL", "")
+LYRA_EMAIL = os.environ.get("LYRA_EMAIL", "")
 LYRA_PASSWORD = os.environ.get("LYRA_PASSWORD", "")
-JM_EMAIL      = os.environ.get("JM_EMAIL", "")
-JM_PASSWORD   = os.environ.get("JM_PASSWORD", "")
+JM_EMAIL = os.environ.get("JM_EMAIL", "")
+JM_PASSWORD = os.environ.get("JM_PASSWORD", "")
 
 # --- Browser -----------------------------------------------------------------
 # Default to headless — production is the common case.  Set HEADLESS=false
@@ -38,10 +38,10 @@ HEADLESS = os.environ.get("HEADLESS", "true").lower() == "true"
 CHROMIUM_PATH = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH", "")
 
 # --- Booking extraction settings ---------------------------------------------
-NUM_MONTHS  = int(os.environ.get("NUM_MONTHS", "10"))
-TEST_MODE   = os.environ.get("TEST_MODE", "false").lower() == "true"
-DRY_RUN     = os.environ.get("DRY_RUN", "false").lower() == "true"
-OUTPUT_CSV  = os.environ.get("OUTPUT_CSV", "bookings.csv")
+NUM_MONTHS = int(os.environ.get("NUM_MONTHS", "10"))
+TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
+DRY_RUN = os.environ.get("DRY_RUN", "false").lower() == "true"
+OUTPUT_CSV = os.environ.get("OUTPUT_CSV", "bookings.csv")
 
 # --- Site URL ----------------------------------------------------------------
 BASE_URL = (
@@ -53,22 +53,22 @@ BASE_URL = (
 JM_BILLING_URL = (
     "https://portal.jmathome.se/kundportal/customer-invoices/billing/extra-costs"
 )
-BILLING_AMOUNT  = os.environ.get("BILLING_AMOUNT", "350")
+BILLING_AMOUNT = os.environ.get("BILLING_AMOUNT", "350")
 BILLING_AVITEXT = os.environ.get("BILLING_AVITEXT", "Gästlägenhet")
 BILLING_ACCOUNT = os.environ.get("BILLING_ACCOUNT", "3250")
 
 # --- Upcoming bookings extraction ---------------------------------------------
-UPCOMING_DAYS      = int(os.environ.get("UPCOMING_DAYS", "13"))
+UPCOMING_DAYS = int(os.environ.get("UPCOMING_DAYS", "13"))
 UPCOMING_OUTPUT_CSV = os.environ.get("UPCOMING_OUTPUT_CSV", "upcoming_bookings.csv")
 
 # --- Access code keys via Seam ------------------------------------------------
 SEAM_API_KEY = os.environ.get("SEAM_API_KEY", "")
-LOCK_NAME    = os.environ.get("LOCK_NAME", "guest_apartment")
+LOCK_NAME = os.environ.get("LOCK_NAME", "guest_apartment")
 
 # --- Email sending via Gmail SMTP ---------------------------------------------
-GMAIL_USER         = os.environ.get("GMAIL_USER", "")
+GMAIL_USER = os.environ.get("GMAIL_USER", "")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
-SENDER_NAME        = os.environ.get("SENDER_NAME", "Anton Frost")
+SENDER_NAME = os.environ.get("SENDER_NAME", "Anton Frost")
 
 # --- Daily production pipeline ------------------------------------------------
 DAILY_LOOKAHEAD = int(os.environ.get("DAILY_LOOKAHEAD", "6"))

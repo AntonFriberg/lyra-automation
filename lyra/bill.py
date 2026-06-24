@@ -26,13 +26,14 @@ log = logging.getLogger(__name__)
 # Apartment matching
 # ---------------------------------------------------------------------------
 
+
 def _parse_lgh(lgh: str) -> tuple[str, str] | None:
     """Extract ``(prefix, last4)`` from a lagenhetsnummer like ``"8-1301"``.
 
     Returns ``None`` if no 4-digit number is present (e.g. ``"Styrelsen"``),
     which signals that this booking should be skipped.
     """
-    digits = re.sub(r"[^0-9]", "", lgh)       # "8-1301" → "81301"
+    digits = re.sub(r"[^0-9]", "", lgh)  # "8-1301" → "81301"
     # Need at least 5 digits for prefix + 4-digit suffix.
     # A bare 4-digit number ("6102") can't be matched reliably.
     if len(digits) < 5:
@@ -70,17 +71,21 @@ def _levenshtein(a: str, b: str) -> int:
     for i, ca in enumerate(a):
         cur = [i + 1]
         for j, cb in enumerate(b):
-            cur.append(min(
-                prev[j + 1] + 1,     # deletion
-                cur[j] + 1,           # insertion
-                prev[j] + (0 if ca == cb else 1),  # substitution
-            ))
+            cur.append(
+                min(
+                    prev[j + 1] + 1,  # deletion
+                    cur[j] + 1,  # insertion
+                    prev[j] + (0 if ca == cb else 1),  # substitution
+                )
+            )
         prev = cur
     return prev[-1]
 
 
 def _find_best_match(
-    page: Page, csv_name: str, csv_lgh: str,
+    page: Page,
+    csv_name: str,
+    csv_lgh: str,
 ) -> tuple[str, str] | None:
     """Return ``(option_value, option_text)`` of the best-matching apartment.
 
@@ -98,7 +103,8 @@ def _find_best_match(
     if parsed is None:
         log.info(
             "  Matching '%s' / '%s': NO 4-DIGIT NUMBER → SKIPPED",
-            csv_name, csv_lgh,
+            csv_name,
+            csv_lgh,
         )
         return None
     prefix, last4 = parsed
@@ -114,18 +120,23 @@ def _find_best_match(
         opt_number, opt_names = _parse_option(text)
         if not opt_number or opt_number[-4:] != last4:
             continue
-        candidates.append({
-            "value": value,
-            "text": text,
-            "number": opt_number,
-            "names": opt_names,
-            "has_prefix": prefix and prefix == opt_number[-5:-4],
-            "dist": _levenshtein(csv_name, opt_names),
-        })
+        candidates.append(
+            {
+                "value": value,
+                "text": text,
+                "number": opt_number,
+                "names": opt_names,
+                "has_prefix": prefix and prefix == opt_number[-5:-4],
+                "dist": _levenshtein(csv_name, opt_names),
+            }
+        )
 
     log.info(
         "  Matching '%s' / '%s'  (prefix=%r last4=%s):",
-        csv_name, csv_lgh, prefix, last4,
+        csv_name,
+        csv_lgh,
+        prefix,
+        last4,
     )
 
     if not candidates:
@@ -150,7 +161,10 @@ def _find_best_match(
         flag_str = " ".join(flags)
         log.debug(
             "    dist=%2d  lgh=%7s  '%s'  %s",
-            c["dist"], c["number"], c["names"][:50], flag_str,
+            c["dist"],
+            c["number"],
+            c["names"][:50],
+            flag_str,
         )
     if len(candidates) > 8:
         log.debug("    ... and %d more candidates", len(candidates) - 8)
@@ -161,6 +175,7 @@ def _find_best_match(
 # ---------------------------------------------------------------------------
 # Page helpers
 # ---------------------------------------------------------------------------
+
 
 def _latest_billed_date(page: Page) -> str:
     """Return the latest date from the global billing table (newest-first).
@@ -219,6 +234,7 @@ def _login(page: Page) -> None:
 # Main orchestration
 # ---------------------------------------------------------------------------
 
+
 def run_bill(playwright: Playwright) -> None:  # noqa: C901
     validate("JM_EMAIL", "JM_PASSWORD")
     # --- Read bookings ----------------------------------------------------
@@ -256,7 +272,11 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
 
         log.info(
             "--- [%d/%d] %s / %s / %s ---",
-            idx + 1, len(bookings), name, lgh, datum,
+            idx + 1,
+            len(bookings),
+            name,
+            lgh,
+            datum,
         )
 
         # Skip if already billed (cutoff from the global unfiltered table,

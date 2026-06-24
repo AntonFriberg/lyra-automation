@@ -54,6 +54,7 @@ log = logging.getLogger(__name__)
 # Main orchestrator
 # ---------------------------------------------------------------------------
 
+
 def run_daily(playwright: Playwright) -> None:  # noqa: C901
     """Run the full daily pipeline: extract → keys → bill.
 
@@ -61,16 +62,22 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
     Only stays that **start** tomorrow get codes and billing.
     """
     validate(
-        "LYRA_EMAIL", "LYRA_PASSWORD",
-        "JM_EMAIL", "JM_PASSWORD",
-        "SEAM_API_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD",
+        "LYRA_EMAIL",
+        "LYRA_PASSWORD",
+        "JM_EMAIL",
+        "JM_PASSWORD",
+        "SEAM_API_KEY",
+        "GMAIL_USER",
+        "GMAIL_APP_PASSWORD",
     )
     today = date.today()
     tomorrow = today + timedelta(days=1)
     window_end = tomorrow + timedelta(days=DAILY_LOOKAHEAD - 1)
     log.info(
         "Daily run %s  window: %s → %s",
-        today.isoformat(), tomorrow.isoformat(), window_end.isoformat(),
+        today.isoformat(),
+        tomorrow.isoformat(),
+        window_end.isoformat(),
     )
 
     # --- Shared browser ---------------------------------------------------
@@ -106,17 +113,18 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
             key = (name, iso_date)
             if key not in seen:
                 seen.add(key)
-                all_bookings.append({
-                    "name": name,
-                    "telefon": fields["telefon"],
-                    "epost": fields["epost"],
-                    "lagenhetsnummer": fields["lagenhetsnummer"],
-                    "datum": iso_date,
-                })
+                all_bookings.append(
+                    {
+                        "name": name,
+                        "telefon": fields["telefon"],
+                        "epost": fields["epost"],
+                        "lagenhetsnummer": fields["lagenhetsnummer"],
+                        "datum": iso_date,
+                    }
+                )
 
         # Stop if the window doesn't spill into next month
-        if (window_end.month == today.month
-                and window_end.year == today.year):
+        if window_end.month == today.month and window_end.year == today.year:
             break
 
     log.info("  Extracted %d booking(s) in window", len(all_bookings))
@@ -131,8 +139,7 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
     with open(csv_path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(
             fh,
-            fieldnames=["name", "telefon", "epost",
-                        "lagenhetsnummer", "datum"],
+            fieldnames=["name", "telefon", "epost", "lagenhetsnummer", "datum"],
         )
         writer.writeheader()
         writer.writerows(all_bookings)
@@ -154,8 +161,12 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
         checkout = end_dt.strftime("%Y-%m-%d")
         log.info(
             "  %s (%s): %s → %s  (%d night(s))  lgh=%s",
-            s["first_name"], s["epost"], s["start_date"],
-            checkout, s["nights"], s["lagenhetsnummer"],
+            s["first_name"],
+            s["epost"],
+            s["start_date"],
+            checkout,
+            s["nights"],
+            s["lagenhetsnummer"],
         )
 
     if DRY_RUN:
@@ -196,21 +207,19 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
     for idx, stay in enumerate(tomorrow_stays):
         log.info(
             "  [%d/%d] %s (%s)",
-            idx + 1, len(tomorrow_stays),
-            stay["first_name"], stay["start_date"],
+            idx + 1,
+            len(tomorrow_stays),
+            stay["first_name"],
+            stay["start_date"],
         )
 
         start_dt, end_dt = _compute_times(stay)
-        code_name = (
-            f"Gästlägenhet: {stay['name']} ({stay['start_date']})"
-        )
+        code_name = f"Gästlägenhet: {stay['name']} ({stay['start_date']})"
 
         # Skip if this stay's time window overlaps any existing code.
         # The lock only serves one apartment, so any overlap means the
         # date is already covered — no need to match by guest name.
-        overlapping = any(
-            s < end_dt and start_dt < e for s, e in existing_ranges
-        )
+        overlapping = any(s < end_dt and start_dt < e for s, e in existing_ranges)
         if overlapping:
             log.info("    SKIP: date range already covered by existing code")
             continue
@@ -236,10 +245,7 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
 
         # Send email
         checkout_date = end_dt.strftime("%Y-%m-%d")
-        subject = (
-            f"Kod till gästlägenheten "
-            f"{stay['start_date']} - {checkout_date}"
-        )
+        subject = f"Kod till gästlägenheten {stay['start_date']} - {checkout_date}"
         nights = stay["nights"]
         nights_text = f"{nights} natt" if nights == 1 else f"{nights} nätter"
         body = EMAIL_TEMPLATE.format(
@@ -280,7 +286,8 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
 
     # Filter window-bookings to only those nights
     bookings_to_bill = [
-        b for b in all_bookings
+        b
+        for b in all_bookings
         if (b["name"], b["lagenhetsnummer"], b["datum"]) in stay_nights
     ]
     bookings_to_bill.sort(key=lambda b: b["datum"])
@@ -291,7 +298,8 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
     log.info("  Latest billed date: %s", cutoff_date)
     log.info(
         "  Nights to bill: %d (from %d stay(s) starting tomorrow)",
-        len(bookings_to_bill), len(tomorrow_stays),
+        len(bookings_to_bill),
+        len(tomorrow_stays),
     )
 
     billed = 0
@@ -302,7 +310,11 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
 
         log.info(
             "  [%d/%d] %s / %s / %s",
-            idx + 1, len(bookings_to_bill), name, lgh, datum,
+            idx + 1,
+            len(bookings_to_bill),
+            name,
+            lgh,
+            datum,
         )
 
         if datum <= cutoff_date:
@@ -347,6 +359,7 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
     # ==================================================================
     log.info(
         "Done — %d stay(s) processed, %d billing entr(ies) created",
-        len(tomorrow_stays), billed,
+        len(tomorrow_stays),
+        billed,
     )
     context.close()
