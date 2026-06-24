@@ -166,14 +166,19 @@ def _latest_billed_date(page: Page) -> str:
 
     Returns ``"0000-00-00"`` if the table has no Gästlägenhet entries.
     """
+    date_pattern = re.compile(
+        rf"{re.escape(BILLING_AVITEXT)}\s+(\d{{4}}-\d{{2}}-\d{{2}})",
+    )
     rows = page.locator("table tr").all()
     for row in rows:
         cells = row.locator("td, th").all()
         if len(cells) < 2:
             continue
         rubric = cells[1].inner_text().strip()
-        if rubric.startswith(BILLING_AVITEXT):
-            return rubric[len(BILLING_AVITEXT):].strip()
+        m = date_pattern.search(rubric)
+        if m:
+            return m.group(1)
+    print(f"WARNING: no {BILLING_AVITEXT} entries found in billing table")
     return "0000-00-00"
 
 
@@ -189,11 +194,18 @@ def _login(page: Page) -> None:
 
     # The apartment dropdown is populated asynchronously.  Wait until the
     # option count stabilises (the page has ~90 apartments, so >10 is a
-    # safe signal that the list has finished loading).
-    page.wait_for_function(
-        "() => document.querySelectorAll('select option').length > 10",
-        timeout=10_000,
-    )
+    # safe signal that the list has finished loading).  Also acts as a
+    # login-verification check — if we never see >10 options, login failed.
+    try:
+        page.wait_for_function(
+            "() => document.querySelectorAll('select option').length > 10",
+            timeout=10_000,
+        )
+    except Exception:
+        raise RuntimeError(
+            "Login to JM Home failed — apartment dropdown not populated. "
+            "Check JM_EMAIL / JM_PASSWORD in .env."
+        )
     page.wait_for_timeout(300)
 
 

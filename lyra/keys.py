@@ -2,6 +2,7 @@
 
 import csv
 import smtplib
+import time
 from datetime import date, datetime, timedelta
 from email.mime.text import MIMEText
 from email.utils import formataddr
@@ -145,7 +146,53 @@ def _send_email(to_email: str, subject: str, body: str) -> None:
     with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
         server.starttls()
         server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        server.send_message(msg)
+        refused = server.send_message(msg)
+        if refused:
+            print(f"  WARNING: email to {to_email} refused for: {refused}")
+
+
+# ---------------------------------------------------------------------------
+# Seam helper with retry
+# ---------------------------------------------------------------------------
+
+def _create_access_code(
+    seam: Seam,
+    device_id: str,
+    name: str,
+    starts_at: str,
+    ends_at: str,
+    *,
+    retries: int = 3,
+) -> str:
+    """Create a Seam access code with retry on transient failures.
+
+    Retries *retries* times with exponential backoff (1s / 2s / 4s).
+    Returns the generated PIN code.  Raises the last exception if all
+    attempts fail.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            result = seam.access_codes.create(
+                device_id=device_id,
+                name=name,
+                starts_at=starts_at,
+                ends_at=ends_at,
+            )
+            code = result.code
+            if not code:
+                raise RuntimeError("Seam returned no code")
+            return code
+        except Exception as exc:
+            last_exc = exc
+            if attempt < retries:
+                delay = 2 ** (attempt - 1)  # 1s, 2s, 4s
+                print(
+                    f"    Seam API error (attempt {attempt}/{retries}), "
+                    f"retrying in {delay}s: {exc}",
+                )
+                time.sleep(delay)
+    raise last_exc  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------
@@ -242,19 +289,15 @@ def run_keys(playwright: Playwright) -> None:  # noqa: C901
         print(f"  Window:   {start_dt.isoformat()} → {end_dt.isoformat()}")
 
         try:
-            result = seam.access_codes.create(
-                device_id=device.device_id,
-                name=code_name,
-                starts_at=start_dt.isoformat(),
-                ends_at=end_dt.isoformat(),
+            entry_code = _create_access_code(
+                seam,
+                device.device_id,
+                code_name,
+                start_dt.isoformat(),
+                end_dt.isoformat(),
             )
         except Exception as exc:
-            print(f"  ERROR creating code: {exc}")
-            continue
-
-        entry_code = result.code
-        if not entry_code:
-            print("  ERROR: Seam returned no code — skipping email")
+            print(f"  ERROR creating code after retries: {exc}")
             continue
 
         print(f"  Code:     {entry_code}")

@@ -36,6 +36,7 @@ from .bill import (
 from .keys import (
     _group_stays,
     _compute_times,
+    _create_access_code,
     _send_email,
     EMAIL_TEMPLATE,
 )
@@ -253,19 +254,15 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
         print(f"    Window:   {start_dt.isoformat()} → {end_dt.isoformat()}")
 
         try:
-            result = seam.access_codes.create(
-                device_id=device.device_id,
-                name=code_name,
-                starts_at=start_dt.isoformat(),
-                ends_at=end_dt.isoformat(),
+            entry_code = _create_access_code(
+                seam,
+                device.device_id,
+                code_name,
+                start_dt.isoformat(),
+                end_dt.isoformat(),
             )
         except Exception as exc:
-            print(f"    ERROR creating code: {exc}")
-            continue
-
-        entry_code = result.code
-        if not entry_code:
-            print("    ERROR: Seam returned no code — skipping email")
+            print(f"    ERROR creating code after retries: {exc}")
             continue
 
         print(f"    Code:     {entry_code}")

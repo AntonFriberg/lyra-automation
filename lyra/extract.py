@@ -38,6 +38,17 @@ def _login(page: Page) -> None:
     if cookie_btn.count():
         cookie_btn.click()
 
+    # Verify login succeeded — calendar grid must appear
+    try:
+        page.wait_for_selector(
+            ".fc-day-grid-event", state="attached", timeout=10_000,
+        )
+    except Exception:
+        raise RuntimeError(
+            "Login to Smart Brf failed — calendar grid not found. "
+            "Check LYRA_EMAIL / LYRA_PASSWORD in .env."
+        )
+
 
 def _wait_for_calendar(page: Page) -> None:
     """Wait until the FullCalendar grid has finished rendering all events.
@@ -185,7 +196,7 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
 # Upcoming bookings — next N days
 # ---------------------------------------------------------------------------
 
-def run_upcoming(playwright: Playwright) -> None:
+def run_upcoming(playwright: Playwright) -> None:  # noqa: C901
     """Extract bookings for the next ``UPCOMING_DAYS`` from the calendar.
 
     Starts from the current month and navigates forward one month if the
