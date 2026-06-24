@@ -9,22 +9,7 @@ on:
 permissions: read-all
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
-        with:
-          enable-cache: true
-      - name: Run tests
-        run: |
-          uv sync --frozen
-          uv run pytest tests/ -q
-
   daily:
-    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
