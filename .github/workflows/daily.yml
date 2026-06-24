@@ -2,10 +2,8 @@ name: Daily pipeline
 
 on:
   schedule:
-    # Primary: 7:00 UTC = ~9:00 CET (winter) / 8:00 CET (summer)
-    - cron: "0 7 * * *"
-    # Fallback: 9:00 UTC — harmless double-fire (idempotent)
-    - cron: "0 9 * * *"
+    - cron: "45 7 * * *"
+      timezone: "Europe/Stockholm"
   workflow_dispatch:
 
 permissions: read-all
