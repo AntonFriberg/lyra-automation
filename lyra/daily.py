@@ -70,6 +70,7 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
         "GMAIL_USER",
         "GMAIL_APP_PASSWORD",
     )
+    raise RuntimeError("DELIBERATE FAILURE TEST — checking email notification")
     today = date.today()
     tomorrow = today + timedelta(days=1)
     window_end = tomorrow + timedelta(days=DAILY_LOOKAHEAD - 1)
