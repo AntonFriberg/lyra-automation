@@ -1,9 +1,12 @@
 """Create Seam access codes for upcoming bookings and email them to guests."""
 
 import csv
+import logging
 import smtplib
 import time
 from datetime import date, datetime, timedelta
+
+log = logging.getLogger(__name__)
 from email.mime.text import MIMEText
 from email.utils import formataddr
 from pathlib import Path
@@ -148,7 +151,7 @@ def _send_email(to_email: str, subject: str, body: str) -> None:
         server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
         refused = server.send_message(msg)
         if refused:
-            print(f"  WARNING: email to {to_email} refused for: {refused}")
+            log.warning("email to %s refused for: %s", to_email, refused)
 
 
 # ---------------------------------------------------------------------------
@@ -187,9 +190,9 @@ def _create_access_code(
             last_exc = exc
             if attempt < retries:
                 delay = 2 ** (attempt - 1)  # 1s, 2s, 4s
-                print(
-                    f"    Seam API error (attempt {attempt}/{retries}), "
-                    f"retrying in {delay}s: {exc}",
+                log.warning(
+                    "Seam API error (attempt %d/%d), retrying in %ds: %s",
+                    attempt, retries, delay, exc,
                 )
                 time.sleep(delay)
     raise last_exc  # type: ignore[misc]
@@ -209,29 +212,29 @@ def run_keys(playwright: Playwright) -> None:  # noqa: C901
     # --- Read CSV ---------------------------------------------------------
     csv_path = Path(UPCOMING_OUTPUT_CSV)
     if not csv_path.is_file():
-        print(f"ERROR: {csv_path} not found — run 'lyra upcoming' first")
+        log.error("%s not found — run 'lyra upcoming' first", csv_path)
         return
 
     with open(csv_path, newline="", encoding="utf-8") as fh:
         bookings = list(csv.DictReader(fh))
 
     if not bookings:
-        print("No upcoming bookings — nothing to do.")
+        log.info("No upcoming bookings — nothing to do.")
         return
 
     stays = _group_stays(bookings)
-    print(
-        f"Grouped {len(bookings)} booking(s) into {len(stays)} stay(s):\n",
+    log.info(
+        "Grouped %d booking(s) into %d stay(s):", len(bookings), len(stays),
     )
     for s in stays:
-        print(
-            f"  {s['first_name']} ({s['epost']}): "
-            f"{s['start_date']} → {s['end_date']}  "
-            f"({s['nights']} night(s))",
+        log.info(
+            "  %s (%s): %s → %s  (%d night(s))",
+            s["first_name"], s["epost"], s["start_date"],
+            s["end_date"], s["nights"],
         )
 
     if DRY_RUN:
-        print("\n=== DRY RUN: no codes created, no emails sent ===")
+        log.warning("=== DRY RUN: no codes created, no emails sent ===")
         return
 
     # --- Seam: find the lock ----------------------------------------------
@@ -239,11 +242,11 @@ def run_keys(playwright: Playwright) -> None:  # noqa: C901
 
     devices = seam.devices.list(search=LOCK_NAME)
     if not devices:
-        print(f"ERROR: no device found matching '{LOCK_NAME}'")
+        log.error("no device found matching '%s'", LOCK_NAME)
         return
 
     device = devices[0]
-    print(f"\nLock: {device.display_name} ({device.device_id})")
+    log.info("Lock: %s (%s)", device.display_name, device.device_id)
 
     # Fetch existing codes so we can skip stays already covered.
     # Compare date ranges, not names — the lock only serves one
@@ -260,15 +263,15 @@ def run_keys(playwright: Playwright) -> None:  # noqa: C901
                 except ValueError:
                     pass
     except Exception:
-        print("WARNING: could not list existing codes — will not skip any")
+        log.warning("could not list existing codes — will not skip any")
         existing_ranges = []
 
     # --- Process each stay ------------------------------------------------
     for idx, stay in enumerate(stays):
-        print(
-            f"\n--- [{idx + 1}/{len(stays)}] "
-            f"{stay['first_name']}  "
-            f"({stay['start_date']} → {stay['end_date']}) ---",
+        log.info(
+            "--- [%d/%d] %s  (%s → %s) ---",
+            idx + 1, len(stays), stay["first_name"],
+            stay["start_date"], stay["end_date"],
         )
 
         start_dt, end_dt = _compute_times(stay)
@@ -281,12 +284,12 @@ def run_keys(playwright: Playwright) -> None:  # noqa: C901
             s < end_dt and start_dt < e for s, e in existing_ranges
         )
         if overlapping:
-            print(f"  SKIP: date range already covered by existing code")
+            log.info("  SKIP: date range already covered by existing code")
             continue
 
         # --- Create access code via Seam ---------------------------------
-        print(f"  Creating: {code_name}")
-        print(f"  Window:   {start_dt.isoformat()} → {end_dt.isoformat()}")
+        log.info("  Creating: %s", code_name)
+        log.info("  Window:   %s → %s", start_dt.isoformat(), end_dt.isoformat())
 
         try:
             entry_code = _create_access_code(
@@ -297,10 +300,10 @@ def run_keys(playwright: Playwright) -> None:  # noqa: C901
                 end_dt.isoformat(),
             )
         except Exception as exc:
-            print(f"  ERROR creating code after retries: {exc}")
+            log.error("  ERROR creating code after retries: %s", exc)
             continue
 
-        print(f"  Code:     {entry_code}")
+        log.info("  Code:     %s", entry_code)
         existing_ranges.append((start_dt, end_dt))
 
         # --- Send email ---------------------------------------------------
@@ -323,10 +326,10 @@ def run_keys(playwright: Playwright) -> None:  # noqa: C901
         )
 
         try:
-            print(f"  Sending email to {stay['epost']} …")
+            log.info("  Sending email to %s …", stay["epost"])
             _send_email(stay["epost"], subject, body)
-            print(f"  Email sent.")
+            log.info("  Email sent.")
         except Exception as exc:
-            print(f"  ERROR sending email: {exc}")
+            log.error("  ERROR sending email: %s", exc)
 
-    print(f"\nDone — processed {len(stays)} stay(s)")
+    log.info("Done — processed %d stay(s)", len(stays))

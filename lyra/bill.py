@@ -1,8 +1,11 @@
 """Enter billing for guest-apartment bookings from bookings.csv into JM Home."""
 
 import csv
+import logging
 import re
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 from playwright.sync_api import Playwright, Page
 
@@ -94,7 +97,7 @@ def _find_best_match(
     """
     parsed = _parse_lgh(csv_lgh)
     if parsed is None:
-        print(f"  Matching '{csv_name}' / '{csv_lgh}': NO 4-DIGIT NUMBER → SKIPPED")
+        log.info("  Matching '%s' / '%s': NO 4-DIGIT NUMBER → SKIPPED", csv_name, csv_lgh)
         return None
     prefix, last4 = parsed
 
@@ -118,10 +121,10 @@ def _find_best_match(
             "dist": _levenshtein(csv_name, opt_names),
         })
 
-    print(f"  Matching '{csv_name}' / '{csv_lgh}'  (prefix={prefix!r} last4={last4}):")
+    log.info("  Matching '%s' / '%s'  (prefix=%r last4=%s):", csv_name, csv_lgh, prefix, last4)
 
     if not candidates:
-        print(f"    NO MATCH — no option ending in {last4}")
+        log.info("    NO MATCH — no option ending in %s", last4)
         return None
 
     # Separate prefix matches from others
@@ -140,14 +143,12 @@ def _find_best_match(
         if c is best:
             flags.append("← SELECTED")
         flag_str = " ".join(flags)
-        print(
-            f"    dist={c['dist']:2d}  "
-            f"lgh={c['number']:>7s}  "
-            f"'{c['names'][:50]}'  "
-            f"{flag_str}"
+        log.debug(
+            "    dist=%2d  lgh=%7s  '%s'  %s",
+            c["dist"], c["number"], c["names"][:50], flag_str,
         )
     if len(candidates) > 8:
-        print(f"    ... and {len(candidates) - 8} more candidates")
+        log.debug("    ... and %d more candidates", len(candidates) - 8)
 
     return best["value"], best["text"]
 
@@ -178,7 +179,7 @@ def _latest_billed_date(page: Page) -> str:
         m = date_pattern.search(rubric)
         if m:
             return m.group(1)
-    print(f"WARNING: no {BILLING_AVITEXT} entries found in billing table")
+    log.warning("no %s entries found in billing table", BILLING_AVITEXT)
     return "0000-00-00"
 
 
@@ -217,7 +218,7 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
     # --- Read bookings ----------------------------------------------------
     csv_path = Path(OUTPUT_CSV)
     if not csv_path.is_file():
-        print(f"ERROR: {csv_path} not found — run main.py first")
+        log.error("%s not found — run 'lyra extract' first", csv_path)
         return
 
     with open(csv_path, newline="", encoding="utf-8") as fh:
@@ -225,7 +226,7 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
 
     # Process oldest first (ISO 8601 dates sort lexicographically)
     bookings.sort(key=lambda b: b["datum"])
-    print(f"Read {len(bookings)} bookings from {csv_path} (oldest first)")
+    log.info("Read %d bookings from %s (oldest first)", len(bookings), csv_path)
 
     # --- Launch browser & login ------------------------------------------
     context, page = launch_browser(playwright)
@@ -233,13 +234,13 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
     _login(page)
 
     if DRY_RUN:
-        print("=== DRY RUN: nothing will be saved ===")
+        log.warning("=== DRY RUN: nothing will be saved ===")
 
     # --- Determine cutoff date from global table -------------------------
     # The table is newest-first and shows all apartments when unfiltered.
     # Any booking on or before this date has already been billed.
     cutoff_date = _latest_billed_date(page)
-    print(f"Latest billed date in table: {cutoff_date}")
+    log.info("Latest billed date in table: %s", cutoff_date)
 
     # --- Process each booking --------------------------------------------
     for idx, booking in enumerate(bookings):
@@ -247,18 +248,18 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
         lgh = booking["lagenhetsnummer"]
         datum = booking["datum"]
 
-        print(f"\n--- [{idx + 1}/{len(bookings)}] {name} / {lgh} / {datum} ---")
+        log.info("--- [%d/%d] %s / %s / %s ---", idx + 1, len(bookings), name, lgh, datum)
 
         # Skip if already billed (cutoff from the global unfiltered table,
         # read once after login).  Check early to avoid wasted work.
         if datum <= cutoff_date:
-            print(f"  SKIPPED: already billed (cutoff: {cutoff_date})")
+            log.info("  SKIPPED: already billed (cutoff: %s)", cutoff_date)
             continue
 
         # 1. Match and select apartment
         match = _find_best_match(page, name, lgh)
         if not match:
-            print("  SKIPPED: no apartment match")
+            log.info("  SKIPPED: no apartment match")
             continue
         option_value, _ = match
 
@@ -282,7 +283,7 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
         page.get_by_role("textbox", name="Ange avitext").press("Tab")
         page.get_by_role("textbox", name="Ange belopp").fill(BILLING_AMOUNT)
 
-        print(f"  Creating: avitext='{avitext}' amount={BILLING_AMOUNT} SEK")
+        log.info("  Creating: avitext='%s' amount=%s SEK", avitext, BILLING_AMOUNT)
         if DRY_RUN:
             page.get_by_role("button", name="Avbryt").click()
             page.wait_for_timeout(300)
@@ -292,5 +293,5 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
             page.wait_for_timeout(300)
             cutoff_date = datum  # advance so a restart won't re-bill
 
-    print(f"\nDone — processed {len(bookings)} bookings")
+    log.info("Done — processed %d bookings", len(bookings))
     context.close()

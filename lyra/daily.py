@@ -6,8 +6,11 @@ emails, and enters billing — all with a single shared browser session.
 """
 
 import csv
+import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 from playwright.sync_api import Playwright, Page
 from seam import Seam
@@ -104,8 +107,7 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
     today = date.today()
     tomorrow = today + timedelta(days=1)
     window_end = tomorrow + timedelta(days=DAILY_LOOKAHEAD - 1)
-    print(f"Daily run {today.isoformat()}  "
-          f"window: {tomorrow.isoformat()} → {window_end.isoformat()}")
+    log.info("Daily run %s  window: %s → %s", today.isoformat(), tomorrow.isoformat(), window_end.isoformat())
 
     # --- Shared browser ---------------------------------------------------
     context, page = launch_browser(playwright)
@@ -113,7 +115,7 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
     # ==================================================================
     # Phase 1 — Extract tomorrow's window from Smart Brf
     # ==================================================================
-    print("\n--- Phase 1: Extract ---")
+    log.info("--- Phase 1: Extract ---")
     _login_smartbrf(page)
 
     all_bookings: list[dict[str, str]] = []
@@ -127,7 +129,7 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
         _wait_for_calendar(page)
         names = _collect_names(page)
 
-        print(f"  Month {month_idx + 1}: {len(names)} booking(s)")
+        log.info("  Month %d: %d booking(s)", month_idx + 1, len(names))
 
         for i, name in enumerate(names):
             fields = _extract_booking(page, i)
@@ -153,10 +155,10 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
                 and window_end.year == today.year):
             break
 
-    print(f"  Extracted {len(all_bookings)} booking(s) in window")
+    log.info("  Extracted %d booking(s) in window", len(all_bookings))
 
     if not all_bookings:
-        print("  Nothing to do — exiting.")
+        log.info("  Nothing to do — exiting.")
         context.close()
         return
 
@@ -174,43 +176,42 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
     # ==================================================================
     # Phase 2 — Group stays & filter to tomorrow-starting
     # ==================================================================
-    print("\n--- Phase 2: Group stays ---")
+    log.info("--- Phase 2: Group stays ---")
     stays = _group_stays(all_bookings)
     tomorrow_stays = [s for s in stays if s["start_date"] == str(tomorrow)]
 
     if not tomorrow_stays:
-        print("  No stay starts tomorrow — exiting.")
+        log.info("  No stay starts tomorrow — exiting.")
         context.close()
         return
 
     for s in tomorrow_stays:
         start_dt, end_dt = _compute_times(s)
         checkout = end_dt.strftime("%Y-%m-%d")
-        print(
-            f"  {s['first_name']} ({s['epost']}): "
-            f"{s['start_date']} → {checkout}  "
-            f"({s['nights']} night(s))  "
-            f"lgh={s['lagenhetsnummer']}",
+        log.info(
+            "  %s (%s): %s → %s  (%d night(s))  lgh=%s",
+            s["first_name"], s["epost"], s["start_date"],
+            checkout, s["nights"], s["lagenhetsnummer"],
         )
 
     if DRY_RUN:
-        print("\n=== DRY RUN: no codes, emails, or billing ===")
+        log.warning("=== DRY RUN: no codes, emails, or billing ===")
         context.close()
         return
 
     # ==================================================================
     # Phase 3 — Seam access codes + emails
     # ==================================================================
-    print("\n--- Phase 3: Access codes + email ---")
+    log.info("--- Phase 3: Access codes + email ---")
 
     seam = Seam()
     devices = seam.devices.list(search=LOCK_NAME)
     if not devices:
-        print(f"  ERROR: no device matching '{LOCK_NAME}'")
+        log.error("no device matching '%s'", LOCK_NAME)
         context.close()
         return
     device = devices[0]
-    print(f"  Lock: {device.display_name} ({device.device_id})")
+    log.info("  Lock: %s (%s)", device.display_name, device.device_id)
 
     try:
         existing_codes = seam.access_codes.list(device_id=device.device_id)
@@ -225,13 +226,14 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
                 except ValueError:
                     pass
     except Exception:
-        print("  WARNING: could not list existing codes")
+        log.warning("could not list existing codes")
         existing_ranges = []
 
     for idx, stay in enumerate(tomorrow_stays):
-        print(
-            f"\n  [{idx + 1}/{len(tomorrow_stays)}] "
-            f"{stay['first_name']} ({stay['start_date']})",
+        log.info(
+            "  [%d/%d] %s (%s)",
+            idx + 1, len(tomorrow_stays),
+            stay["first_name"], stay["start_date"],
         )
 
         start_dt, end_dt = _compute_times(stay)
@@ -246,12 +248,12 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
             s < end_dt and start_dt < e for s, e in existing_ranges
         )
         if overlapping:
-            print(f"    SKIP: date range already covered by existing code")
+            log.info("    SKIP: date range already covered by existing code")
             continue
 
         # Create code
-        print(f"    Creating: {code_name}")
-        print(f"    Window:   {start_dt.isoformat()} → {end_dt.isoformat()}")
+        log.info("    Creating: %s", code_name)
+        log.info("    Window:   %s → %s", start_dt.isoformat(), end_dt.isoformat())
 
         try:
             entry_code = _create_access_code(
@@ -262,10 +264,10 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
                 end_dt.isoformat(),
             )
         except Exception as exc:
-            print(f"    ERROR creating code after retries: {exc}")
+            log.error("    ERROR creating code after retries: %s", exc)
             continue
 
-        print(f"    Code:     {entry_code}")
+        log.info("    Code:     %s", entry_code)
         existing_ranges.append((start_dt, end_dt))
 
         # Send email
@@ -286,16 +288,16 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
         )
 
         try:
-            print(f"    Sending email to {stay['epost']} …")
+            log.info("    Sending email to %s …", stay["epost"])
             _send_email(stay["epost"], subject, body)
-            print(f"    Email sent.")
+            log.info("    Email sent.")
         except Exception as exc:
-            print(f"    ERROR sending email: {exc}")
+            log.error("    ERROR sending email: %s", exc)
 
     # ==================================================================
     # Phase 4 — Billing in JM Home (one entry per night)
     # ==================================================================
-    print("\n--- Phase 4: Billing ---")
+    log.info("--- Phase 4: Billing ---")
 
     # Only bill nights belonging to the same stays we created codes for.
     # Build a set of (name, lgh, datum) tuples from tomorrow_stays.
@@ -318,9 +320,11 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
     _login_jmhome(page)
 
     cutoff_date = _latest_billed_date(page)
-    print(f"  Latest billed date: {cutoff_date}")
-    print(f"  Nights to bill: {len(bookings_to_bill)} "
-          f"(from {len(tomorrow_stays)} stay(s) starting tomorrow)")
+    log.info("  Latest billed date: %s", cutoff_date)
+    log.info(
+        "  Nights to bill: %d (from %d stay(s) starting tomorrow)",
+        len(bookings_to_bill), len(tomorrow_stays),
+    )
 
     billed = 0
     for idx, booking in enumerate(bookings_to_bill):
@@ -328,18 +332,18 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
         lgh = booking["lagenhetsnummer"]
         datum = booking["datum"]
 
-        print(
-            f"\n  [{idx + 1}/{len(bookings_to_bill)}] "
-            f"{name} / {lgh} / {datum}",
+        log.info(
+            "  [%d/%d] %s / %s / %s",
+            idx + 1, len(bookings_to_bill), name, lgh, datum,
         )
 
         if datum <= cutoff_date:
-            print(f"    SKIP: already billed (cutoff: {cutoff_date})")
+            log.info("    SKIP: already billed (cutoff: %s)", cutoff_date)
             continue
 
         match = _find_best_match(page, name, lgh)
         if not match:
-            print("    SKIP: no apartment match")
+            log.info("    SKIP: no apartment match")
             continue
         option_value, _ = match
 
@@ -368,13 +372,13 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
 
         cutoff_date = datum
         billed += 1
-        print(f"    Billed: '{avitext}' {BILLING_AMOUNT} SEK")
+        log.info("    Billed: '%s' %s SEK", avitext, BILLING_AMOUNT)
 
     # ==================================================================
     # Done
     # ==================================================================
-    print(
-        f"\nDone — {len(tomorrow_stays)} stay(s) processed, "
-        f"{billed} billing entr(ies) created",
+    log.info(
+        "Done — %d stay(s) processed, %d billing entr(ies) created",
+        len(tomorrow_stays), billed,
     )
     context.close()

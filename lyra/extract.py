@@ -1,8 +1,11 @@
 """Extract guest-apartment bookings from Lyra's Smart Brf calendar."""
 
 import csv
+import logging
 from datetime import date, timedelta
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 from playwright.sync_api import Playwright, Page
 
@@ -94,7 +97,7 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
     _login(page)
 
     if TEST_MODE:
-        print("=== TEST MODE: 1 month, 1 booking ===")
+        log.warning("=== TEST MODE: 1 month, 1 booking ===")
 
     all_results: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()          # (name, iso_date) dedup
@@ -111,9 +114,10 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
         _wait_for_calendar(page)
         booking_names = _collect_names(page)
 
-        print(
-            f"Month {month_idx + 1}/{months_to_scan} — "
-            f"{len(booking_names)} bookings: {booking_names}"
+        log.info(
+            "Month %d/%d — %d bookings: %s",
+            month_idx + 1, months_to_scan,
+            len(booking_names), booking_names,
         )
 
         # --- Extract each booking in the current month ------------------
@@ -171,12 +175,10 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
                     "lagenhetsnummer": lagenhetsnummer,
                     "datum": iso_date,
                 })
-                print(
-                    f"  [{len(all_results)}] {name}: "
-                    f"telefon={telefon}, "
-                    f"epost={epost}, "
-                    f"lägenhet={lagenhetsnummer}, "
-                    f"datum={iso_date}"
+                log.debug(
+                    "  [%d] %s: telefon=%s epost=%s lägenhet=%s datum=%s",
+                    len(all_results), name, telefon, epost,
+                    lagenhetsnummer, iso_date,
                 )
 
     # --- Write CSV ------------------------------------------------------
@@ -187,7 +189,7 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
         )
         writer.writeheader()
         writer.writerows(all_results)
-    print(f"Wrote {len(all_results)} rows to {csv_path}")
+    log.info("Wrote %d rows to %s", len(all_results), csv_path)
 
     context.close()
 
@@ -209,7 +211,7 @@ def run_upcoming(playwright: Playwright) -> None:  # noqa: C901
 
     today = date.today()
     cutoff = today + timedelta(days=UPCOMING_DAYS)
-    print(f"Scanning {today} → {cutoff} ({UPCOMING_DAYS} days)")
+    log.info("Scanning %s → %s (%d days)", today, cutoff, UPCOMING_DAYS)
 
     all_results: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
@@ -223,9 +225,9 @@ def run_upcoming(playwright: Playwright) -> None:  # noqa: C901
         _wait_for_calendar(page)
         booking_names = _collect_names(page)
 
-        print(
-            f"Month {month_idx + 1}: "
-            f"{len(booking_names)} bookings: {booking_names}"
+        log.info(
+            "Month %d: %d bookings: %s",
+            month_idx + 1, len(booking_names), booking_names,
         )
 
         for i, name in enumerate(booking_names):
@@ -277,12 +279,10 @@ def run_upcoming(playwright: Playwright) -> None:  # noqa: C901
                     "lagenhetsnummer": lagenhetsnummer,
                     "datum": iso_date,
                 })
-                print(
-                    f"  [{len(all_results)}] {name}: "
-                    f"telefon={telefon}, "
-                    f"epost={epost}, "
-                    f"lägenhet={lagenhetsnummer}, "
-                    f"datum={iso_date}"
+                log.debug(
+                    "  [%d] %s: telefon=%s epost=%s lägenhet=%s datum=%s",
+                    len(all_results), name, telefon, epost,
+                    lagenhetsnummer, iso_date,
                 )
 
         # If the cutoff is still within the current calendar month we're done
@@ -299,6 +299,6 @@ def run_upcoming(playwright: Playwright) -> None:  # noqa: C901
         )
         writer.writeheader()
         writer.writerows(all_results)
-    print(f"Wrote {len(all_results)} rows to {csv_path}")
+    log.info("Wrote %d rows to %s", len(all_results), csv_path)
 
     context.close()
