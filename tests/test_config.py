@@ -6,9 +6,10 @@ import lyra.config as config_module
 from lyra.config import validate
 
 
-def test_validate_passes_when_all_present():
+def test_validate_passes_when_all_present(monkeypatch):
     """Should not raise when all required vars are non-empty."""
-    # These are set by .env → load_dotenv at import time
+    monkeypatch.setattr(config_module, "LYRA_EMAIL", "test@ex.com")
+    monkeypatch.setattr(config_module, "LYRA_PASSWORD", "secret")
     validate("LYRA_EMAIL", "LYRA_PASSWORD")
 
 
@@ -26,10 +27,9 @@ def test_validate_lists_all_missing():
     assert "MISSING_B" in msg
 
 
-def test_validate_only_checks_requested_keys():
+def test_validate_only_checks_requested_keys(monkeypatch):
     """validate(…) should only check the keys it's given, nothing more."""
-    # GMAIL_USER is set in .env; LYRA_EMAIL is also set.
-    # Only validate GMAIL_USER → shouldn't care about LYRA_EMAIL.
+    monkeypatch.setattr(config_module, "GMAIL_USER", "sender@ex.com")
     validate("GMAIL_USER")  # no error
 
 
