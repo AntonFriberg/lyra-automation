@@ -3,7 +3,7 @@
 import logging
 import sys
 
-from playwright.sync_api import Playwright, Page, BrowserContext
+from playwright.sync_api import BrowserContext, Page, Playwright
 
 # Load .env before any config reads so os.environ is populated.
 # Must happen at import time because config reads env vars at module level.
@@ -31,7 +31,7 @@ def _setup_logging() -> None:
 
 _setup_logging()
 
-from .config import CHROMIUM_PATH, HEADLESS
+from .config import CHROMIUM_PATH, HEADLESS  # noqa: E402
 
 
 def launch_browser(playwright: Playwright) -> tuple[BrowserContext, Page]:

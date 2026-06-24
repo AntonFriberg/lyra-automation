@@ -4,9 +4,7 @@ import csv
 import logging
 import smtplib
 import time
-from datetime import date, datetime, timedelta
-
-log = logging.getLogger(__name__)
+from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.utils import formataddr
 from pathlib import Path
@@ -24,6 +22,8 @@ from .config import (
     UPCOMING_OUTPUT_CSV,
     validate,
 )
+
+log = logging.getLogger(__name__)
 
 TZ = ZoneInfo("Europe/Stockholm")
 

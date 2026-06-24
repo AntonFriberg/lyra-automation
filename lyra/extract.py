@@ -5,9 +5,7 @@ import logging
 from datetime import date, timedelta
 from pathlib import Path
 
-log = logging.getLogger(__name__)
-
-from playwright.sync_api import Playwright, Page
+from playwright.sync_api import Page, Playwright
 
 from . import launch_browser
 from .config import (
@@ -23,6 +21,7 @@ from .config import (
 )
 from .utils import parse_swedish_date
 
+log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Small helpers — named actions that keep run() readable
@@ -47,11 +46,11 @@ def _login(page: Page) -> None:
         page.wait_for_selector(
             ".fc-day-grid-event", state="attached", timeout=10_000,
         )
-    except Exception:
+    except Exception as exc:
         raise RuntimeError(
             "Login to Smart Brf failed — calendar grid not found. "
             "Check LYRA_EMAIL / LYRA_PASSWORD in .env."
-        )
+        ) from exc
 
 
 def _wait_for_calendar(page: Page) -> None:
@@ -92,6 +91,47 @@ def _collect_names(page: Page) -> list[str]:
 # Main orchestration
 # ---------------------------------------------------------------------------
 
+
+def _extract_booking(page: Page, index: int) -> dict[str, str]:
+    """Click a calendar booking, read modal fields, close modal.
+
+    Returns *telefon*, *epost*, *lagenhetsnummer*, and *datum* (ISO 8601).
+    """
+    page.evaluate(
+        """(idx) => {
+            document.querySelectorAll('a.unavailable')[idx].click();
+        }""",
+        index,
+    )
+    page.wait_for_selector(
+        ".remodal.remodal-is-opened", state="attached", timeout=5_000,
+    )
+
+    telefon = page.get_by_role("textbox", name="Telefon").input_value()
+    lagenhetsnummer = page.get_by_role(
+        "textbox", name="Lägenhetsnummer",
+    ).input_value()
+    epost = page.locator("#booking_user span.email").text_content() or ""
+
+    date_el = page.locator("span.date")
+    date_text = (
+        (date_el.first.text_content() or "") if date_el.count() else ""
+    )
+    iso_date = parse_swedish_date(date_text)
+
+    page.locator("[data-remodal-action='close']").click()
+    page.wait_for_selector(
+        ".remodal.remodal-is-closed", state="attached", timeout=5_000,
+    )
+
+    return {
+        "telefon": telefon,
+        "epost": epost,
+        "lagenhetsnummer": lagenhetsnummer,
+        "datum": iso_date,
+    }
+
+
 def run_extract(playwright: Playwright) -> None:  # noqa: C901
     validate("LYRA_EMAIL", "LYRA_PASSWORD")
     context, page = launch_browser(playwright)
@@ -127,41 +167,8 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
             if TEST_MODE and i > 0:
                 break
 
-            # Click the booking element via JS.  FullCalendar elements
-            # are often offscreen / zero-height, which defeats Playwright's
-            # coordinate-based click even with force=True.
-            page.evaluate(
-                """(idx) => {
-                    document.querySelectorAll('a.unavailable')[idx].click();
-                }""",
-                i,
-            )
-            page.wait_for_selector(
-                ".remodal.remodal-is-opened", state="attached", timeout=5_000,
-            )
-
-            # Read the detail-view fields
-            telefon = page.get_by_role(
-                "textbox", name="Telefon",
-            ).input_value()
-            lagenhetsnummer = page.get_by_role(
-                "textbox", name="Lägenhetsnummer",
-            ).input_value()
-            epost = (
-                page.locator("#booking_user span.email").text_content() or ""
-            )
-
-            date_el = page.locator("span.date")
-            date_text = (
-                (date_el.first.text_content() or "") if date_el.count() else ""
-            )
-            iso_date = parse_swedish_date(date_text)
-
-            # Close the modal *before* any skip-logic so it never stays open
-            page.locator("[data-remodal-action='close']").click()
-            page.wait_for_selector(
-                ".remodal.remodal-is-closed", state="attached", timeout=5_000,
-            )
+            fields = _extract_booking(page, i)
+            iso_date = fields["datum"]
 
             # --- Filter & deduplicate -----------------------------------
             if iso_date > str(date.today()):
@@ -172,15 +179,15 @@ def run_extract(playwright: Playwright) -> None:  # noqa: C901
                 seen.add(key)
                 all_results.append({
                     "name": name,
-                    "telefon": telefon,
-                    "epost": epost,
-                    "lagenhetsnummer": lagenhetsnummer,
+                    "telefon": fields["telefon"],
+                    "epost": fields["epost"],
+                    "lagenhetsnummer": fields["lagenhetsnummer"],
                     "datum": iso_date,
                 })
                 log.debug(
                     "  [%d] %s: telefon=%s epost=%s lägenhet=%s datum=%s",
-                    len(all_results), name, telefon, epost,
-                    lagenhetsnummer, iso_date,
+                    len(all_results), name, fields["telefon"],
+                    fields["epost"], fields["lagenhetsnummer"], iso_date,
                 )
 
     # --- Write CSV ------------------------------------------------------
@@ -234,39 +241,8 @@ def run_upcoming(playwright: Playwright) -> None:  # noqa: C901
         )
 
         for i, name in enumerate(booking_names):
-            # Click the booking element via JS
-            page.evaluate(
-                """(idx) => {
-                    document.querySelectorAll('a.unavailable')[idx].click();
-                }""",
-                i,
-            )
-            page.wait_for_selector(
-                ".remodal.remodal-is-opened", state="attached", timeout=5_000,
-            )
-
-            # Read the detail-view fields
-            telefon = page.get_by_role(
-                "textbox", name="Telefon",
-            ).input_value()
-            lagenhetsnummer = page.get_by_role(
-                "textbox", name="Lägenhetsnummer",
-            ).input_value()
-            epost = (
-                page.locator("#booking_user span.email").text_content() or ""
-            )
-
-            date_el = page.locator("span.date")
-            date_text = (
-                (date_el.first.text_content() or "") if date_el.count() else ""
-            )
-            iso_date = parse_swedish_date(date_text)
-
-            # Close the modal *before* any skip-logic
-            page.locator("[data-remodal-action='close']").click()
-            page.wait_for_selector(
-                ".remodal.remodal-is-closed", state="attached", timeout=5_000,
-            )
+            fields = _extract_booking(page, i)
+            iso_date = fields["datum"]
 
             # Only keep dates within [today, cutoff]
             if iso_date < str(today) or iso_date > str(cutoff):
@@ -277,15 +253,15 @@ def run_upcoming(playwright: Playwright) -> None:  # noqa: C901
                 seen.add(key)
                 all_results.append({
                     "name": name,
-                    "telefon": telefon,
-                    "epost": epost,
-                    "lagenhetsnummer": lagenhetsnummer,
+                    "telefon": fields["telefon"],
+                    "epost": fields["epost"],
+                    "lagenhetsnummer": fields["lagenhetsnummer"],
                     "datum": iso_date,
                 })
                 log.debug(
                     "  [%d] %s: telefon=%s epost=%s lägenhet=%s datum=%s",
-                    len(all_results), name, telefon, epost,
-                    lagenhetsnummer, iso_date,
+                    len(all_results), name, fields["telefon"],
+                    fields["epost"], fields["lagenhetsnummer"], iso_date,
                 )
 
         # If the cutoff is still within the current calendar month we're done

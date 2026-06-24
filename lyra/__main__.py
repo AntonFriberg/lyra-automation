@@ -4,10 +4,10 @@ import argparse
 
 from playwright.sync_api import sync_playwright
 
-from .extract import run_extract, run_upcoming
 from .bill import run_bill
-from .keys import run_keys
 from .daily import run_daily
+from .extract import run_extract, run_upcoming
+from .keys import run_keys
 
 
 def main() -> None:

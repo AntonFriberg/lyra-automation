@@ -5,23 +5,22 @@ import logging
 import re
 from pathlib import Path
 
-log = logging.getLogger(__name__)
-
-from playwright.sync_api import Playwright, Page
+from playwright.sync_api import Page, Playwright
 
 from . import launch_browser
 from .config import (
-    JM_BILLING_URL,
-    JM_EMAIL,
-    JM_PASSWORD,
     BILLING_ACCOUNT,
     BILLING_AMOUNT,
     BILLING_AVITEXT,
     DRY_RUN,
+    JM_BILLING_URL,
+    JM_EMAIL,
+    JM_PASSWORD,
     OUTPUT_CSV,
     validate,
 )
 
+log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Apartment matching
@@ -34,13 +33,12 @@ def _parse_lgh(lgh: str) -> tuple[str, str] | None:
     which signals that this booking should be skipped.
     """
     digits = re.sub(r"[^0-9]", "", lgh)       # "8-1301" → "81301"
-    if len(digits) < 4:
+    # Need at least 5 digits for prefix + 4-digit suffix.
+    # A bare 4-digit number ("6102") can't be matched reliably.
+    if len(digits) < 5:
         return None
     last4 = digits[-4:]
-    # Prefix = digit immediately before the last 4 (if any)
-    prefix = ""
-    if len(digits) >= 5:
-        prefix = digits[-5]
+    prefix = digits[-5]
     return prefix, last4
 
 
@@ -98,7 +96,10 @@ def _find_best_match(
     """
     parsed = _parse_lgh(csv_lgh)
     if parsed is None:
-        log.info("  Matching '%s' / '%s': NO 4-DIGIT NUMBER → SKIPPED", csv_name, csv_lgh)
+        log.info(
+            "  Matching '%s' / '%s': NO 4-DIGIT NUMBER → SKIPPED",
+            csv_name, csv_lgh,
+        )
         return None
     prefix, last4 = parsed
 
@@ -122,7 +123,10 @@ def _find_best_match(
             "dist": _levenshtein(csv_name, opt_names),
         })
 
-    log.info("  Matching '%s' / '%s'  (prefix=%r last4=%s):", csv_name, csv_lgh, prefix, last4)
+    log.info(
+        "  Matching '%s' / '%s'  (prefix=%r last4=%s):",
+        csv_name, csv_lgh, prefix, last4,
+    )
 
     if not candidates:
         log.info("    NO MATCH — no option ending in %s", last4)
@@ -203,11 +207,11 @@ def _login(page: Page) -> None:
             "() => document.querySelectorAll('select option').length > 10",
             timeout=10_000,
         )
-    except Exception:
+    except Exception as exc:
         raise RuntimeError(
             "Login to JM Home failed — apartment dropdown not populated. "
             "Check JM_EMAIL / JM_PASSWORD in .env."
-        )
+        ) from exc
     page.wait_for_timeout(300)
 
 
@@ -250,7 +254,10 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
         lgh = booking["lagenhetsnummer"]
         datum = booking["datum"]
 
-        log.info("--- [%d/%d] %s / %s / %s ---", idx + 1, len(bookings), name, lgh, datum)
+        log.info(
+            "--- [%d/%d] %s / %s / %s ---",
+            idx + 1, len(bookings), name, lgh, datum,
+        )
 
         # Skip if already billed (cutoff from the global unfiltered table,
         # read once after login).  Check early to avoid wasted work.

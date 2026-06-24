@@ -1,8 +1,8 @@
 """Unit tests for billing.py utility functions."""
 
 import pytest
-from lyra.bill import _parse_lgh, _parse_option, _levenshtein
 
+from lyra.bill import _levenshtein, _parse_lgh, _parse_option
 
 # ---------------------------------------------------------------------------
 # _parse_lgh
@@ -13,11 +13,11 @@ from lyra.bill import _parse_lgh, _parse_option, _levenshtein
     ("7-1002",   ("7", "1002")),
     ("07-1501",  ("7", "1501")),
     ("81201",    ("8", "1201")),
-    ("1302",     ("", "1302")),
-    ("1105",     ("", "1105")),
+    ("1302",     None),        # 4 digits, no prefix
+    ("1105",     None),        # 4 digits, no prefix
     ("51305",    ("5", "1305")),
     ("71105",    ("7", "1105")),
-    ("6-102",    ("", "6102")),
+    ("6-102",    None),        # 4 digits, can't determine prefix
     ("Styrelsen", None),
     ("",          None),
     ("123",       None),

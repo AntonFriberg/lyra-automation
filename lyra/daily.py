@@ -10,12 +10,17 @@ import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-log = logging.getLogger(__name__)
-
-from playwright.sync_api import Playwright, Page
+from playwright.sync_api import Playwright
 from seam import Seam
 
 from . import launch_browser
+from .bill import (
+    _find_best_match,
+    _latest_billed_date,
+)
+from .bill import (
+    _login as _login_jmhome,
+)
 from .config import (
     BILLING_ACCOUNT,
     BILLING_AMOUNT,
@@ -28,72 +33,22 @@ from .config import (
     validate,
 )
 from .extract import (
-    _login as _login_smartbrf,
-    _wait_for_calendar,
     _collect_names,
+    _extract_booking,
+    _wait_for_calendar,
 )
-from .bill import (
-    _login as _login_jmhome,
-    _find_best_match,
-    _latest_billed_date,
+from .extract import (
+    _login as _login_smartbrf,
 )
 from .keys import (
-    _group_stays,
+    EMAIL_TEMPLATE,
     _compute_times,
     _create_access_code,
+    _group_stays,
     _send_email,
-    EMAIL_TEMPLATE,
 )
-from .utils import parse_swedish_date
 
-
-# ---------------------------------------------------------------------------
-# Modal extraction helper (mirrors extract.py's inline block)
-# ---------------------------------------------------------------------------
-
-def _extract_booking(page: Page, index: int) -> dict[str, str]:
-    """Click a calendar booking, read the modal fields, close it.
-
-    Returns a dict with *name*, *telefon*, *epost*, *lagenhetsnummer*,
-    and *datum* (ISO 8601).  The *name* comes from ``_collect_names``
-    and is passed in separately — we re-read it here for consistency.
-    """
-    # Click via JS (FullCalendar elements are often offscreen)
-    page.evaluate(
-        """(idx) => {
-            document.querySelectorAll('a.unavailable')[idx].click();
-        }""",
-        index,
-    )
-    page.wait_for_selector(
-        ".remodal.remodal-is-opened", state="attached", timeout=5_000,
-    )
-
-    telefon = page.get_by_role("textbox", name="Telefon").input_value()
-    lagenhetsnummer = page.get_by_role(
-        "textbox", name="Lägenhetsnummer",
-    ).input_value()
-    epost = page.locator("#booking_user span.email").text_content() or ""
-
-    date_el = page.locator("span.date")
-    date_text = (
-        (date_el.first.text_content() or "") if date_el.count() else ""
-    )
-    iso_date = parse_swedish_date(date_text)
-
-    # Close modal
-    page.locator("[data-remodal-action='close']").click()
-    page.wait_for_selector(
-        ".remodal.remodal-is-closed", state="attached", timeout=5_000,
-    )
-
-    return {
-        "telefon": telefon,
-        "epost": epost,
-        "lagenhetsnummer": lagenhetsnummer,
-        "datum": iso_date,
-    }
-
+log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Main orchestrator
@@ -113,7 +68,10 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
     today = date.today()
     tomorrow = today + timedelta(days=1)
     window_end = tomorrow + timedelta(days=DAILY_LOOKAHEAD - 1)
-    log.info("Daily run %s  window: %s → %s", today.isoformat(), tomorrow.isoformat(), window_end.isoformat())
+    log.info(
+        "Daily run %s  window: %s → %s",
+        today.isoformat(), tomorrow.isoformat(), window_end.isoformat(),
+    )
 
     # --- Shared browser ---------------------------------------------------
     context, page = launch_browser(playwright)
@@ -303,6 +261,10 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
     # ==================================================================
     # Phase 4 — Billing in JM Home (one entry per night)
     # ==================================================================
+    if DRY_RUN:
+        log.warning("=== DRY RUN: skipping billing ===")
+        context.close()
+        return
     log.info("--- Phase 4: Billing ---")
 
     # Only bill nights belonging to the same stays we created codes for.
