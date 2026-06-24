@@ -8,20 +8,24 @@ from lyra.bill import _levenshtein, _parse_lgh, _parse_option
 # _parse_lgh
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("lgh, expected", [
-    ("8-1301",   ("8", "1301")),
-    ("7-1002",   ("7", "1002")),
-    ("07-1501",  ("7", "1501")),
-    ("81201",    ("8", "1201")),
-    ("1302",     None),        # 4 digits, no prefix
-    ("1105",     None),        # 4 digits, no prefix
-    ("51305",    ("5", "1305")),
-    ("71105",    ("7", "1105")),
-    ("6-102",    None),        # 4 digits, can't determine prefix
-    ("Styrelsen", None),
-    ("",          None),
-    ("123",       None),
-])
+
+@pytest.mark.parametrize(
+    "lgh, expected",
+    [
+        ("8-1301", ("8", "1301")),
+        ("7-1002", ("7", "1002")),
+        ("07-1501", ("7", "1501")),
+        ("81201", ("8", "1201")),
+        ("1302", None),  # 4 digits, no prefix
+        ("1105", None),  # 4 digits, no prefix
+        ("51305", ("5", "1305")),
+        ("71105", ("7", "1105")),
+        ("6-102", None),  # 4 digits, can't determine prefix
+        ("Styrelsen", None),
+        ("", None),
+        ("123", None),
+    ],
+)
 def test_parse_lgh(lgh, expected):
     assert _parse_lgh(lgh) == expected
 
@@ -30,32 +34,42 @@ def test_parse_lgh(lgh, expected):
 # _parse_option
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("text, expected_number, expected_names", [
-    (
-        "Lund Pentagonen 3-51001, Street 57 (Alice Andersson)",
-        "3-51001", "Alice Andersson",
-    ),
-    (
-        "Lund Pentagonen 3-61002, Street 55 (Bob Builder, Carol Cool)",
-        "3-61002", "Bob Builder, Carol Cool",
-    ),
-    (
-        "Lund Pentagonen 3-51003, Street 57 (Dave Dev, Eve Edge, Frank Foo)",
-        "3-51003", "Dave Dev, Eve Edge, Frank Foo",
-    ),
-    (
-        "Lund Pentagonen 3-51104, Street 57",
-        "3-51104", "",
-    ),
-    (
-        "Lund Pentagonen 3-61105, Street 55 (Grace Green)",
-        "3-61105", "Grace Green",
-    ),
-    (
-        "Town Centrum 4-71202, Other Street 10 (Henry Hill)",
-        "4-71202", "Henry Hill",
-    ),
-])
+
+@pytest.mark.parametrize(
+    "text, expected_number, expected_names",
+    [
+        (
+            "Lund Pentagonen 3-51001, Street 57 (Alice Andersson)",
+            "3-51001",
+            "Alice Andersson",
+        ),
+        (
+            "Lund Pentagonen 3-61002, Street 55 (Bob Builder, Carol Cool)",
+            "3-61002",
+            "Bob Builder, Carol Cool",
+        ),
+        (
+            "Lund Pentagonen 3-51003, Street 57 (Dave Dev, Eve Edge, Frank Foo)",
+            "3-51003",
+            "Dave Dev, Eve Edge, Frank Foo",
+        ),
+        (
+            "Lund Pentagonen 3-51104, Street 57",
+            "3-51104",
+            "",
+        ),
+        (
+            "Lund Pentagonen 3-61105, Street 55 (Grace Green)",
+            "3-61105",
+            "Grace Green",
+        ),
+        (
+            "Town Centrum 4-71202, Other Street 10 (Henry Hill)",
+            "4-71202",
+            "Henry Hill",
+        ),
+    ],
+)
 def test_parse_option(text, expected_number, expected_names):
     assert _parse_option(text) == (expected_number, expected_names)
 
@@ -63,6 +77,7 @@ def test_parse_option(text, expected_number, expected_names):
 # ---------------------------------------------------------------------------
 # _levenshtein
 # ---------------------------------------------------------------------------
+
 
 class TestLevenshtein:
     def test_identical_strings(self):
@@ -88,11 +103,14 @@ class TestLevenshtein:
     def test_both_empty(self):
         assert _levenshtein("", "") == 0
 
-    @pytest.mark.parametrize("a, b, expected", [
-        ("cat",  "cats", 1),
-        ("cats", "cat",  1),
-        ("cat",  "cut",  1),
-    ])
+    @pytest.mark.parametrize(
+        "a, b, expected",
+        [
+            ("cat", "cats", 1),
+            ("cats", "cat", 1),
+            ("cat", "cut", 1),
+        ],
+    )
     def test_single_edit(self, a, b, expected):
         assert _levenshtein(a, b) == expected
 
