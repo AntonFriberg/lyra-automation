@@ -25,6 +25,7 @@ from .config import (
     LOCK_NAME,
     SENDER_NAME,
     UPCOMING_OUTPUT_CSV,
+    validate,
 )
 from .extract import (
     _login as _login_smartbrf,
@@ -104,6 +105,11 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
     Window: tomorrow through tomorrow + ``DAILY_LOOKAHEAD - 1`` days.
     Only stays that **start** tomorrow get codes and billing.
     """
+    validate(
+        "LYRA_EMAIL", "LYRA_PASSWORD",
+        "JM_EMAIL", "JM_PASSWORD",
+        "SEAM_API_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD",
+    )
     today = date.today()
     tomorrow = today + timedelta(days=1)
     window_end = tomorrow + timedelta(days=DAILY_LOOKAHEAD - 1)

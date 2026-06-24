@@ -22,6 +22,7 @@ from .config import (
     LOCK_NAME,
     SENDER_NAME,
     UPCOMING_OUTPUT_CSV,
+    validate,
 )
 
 TZ = ZoneInfo("Europe/Stockholm")
@@ -209,6 +210,7 @@ def run_keys(playwright: Playwright) -> None:  # noqa: C901
     the same email into stays, creates a time-bound access code for each
     stay via the Seam API, and emails the code to the guest.
     """
+    validate("SEAM_API_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD")
     # --- Read CSV ---------------------------------------------------------
     csv_path = Path(UPCOMING_OUTPUT_CSV)
     if not csv_path.is_file():

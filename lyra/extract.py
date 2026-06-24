@@ -19,6 +19,7 @@ from .config import (
     TEST_MODE,
     UPCOMING_DAYS,
     UPCOMING_OUTPUT_CSV,
+    validate,
 )
 from .utils import parse_swedish_date
 
@@ -92,6 +93,7 @@ def _collect_names(page: Page) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def run_extract(playwright: Playwright) -> None:  # noqa: C901
+    validate("LYRA_EMAIL", "LYRA_PASSWORD")
     context, page = launch_browser(playwright)
 
     _login(page)
@@ -205,6 +207,7 @@ def run_upcoming(playwright: Playwright) -> None:  # noqa: C901
     date window spills across a month boundary.  Writes a separate CSV so
     the historic ``bookings.csv`` is never overwritten.
     """
+    validate("LYRA_EMAIL", "LYRA_PASSWORD")
     context, page = launch_browser(playwright)
 
     _login(page)

@@ -19,6 +19,7 @@ from .config import (
     BILLING_AVITEXT,
     DRY_RUN,
     OUTPUT_CSV,
+    validate,
 )
 
 
@@ -215,6 +216,7 @@ def _login(page: Page) -> None:
 # ---------------------------------------------------------------------------
 
 def run_bill(playwright: Playwright) -> None:  # noqa: C901
+    validate("JM_EMAIL", "JM_PASSWORD")
     # --- Read bookings ----------------------------------------------------
     csv_path = Path(OUTPUT_CSV)
     if not csv_path.is_file():

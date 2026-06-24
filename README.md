@@ -65,25 +65,29 @@ uv run lyra bill
 
 ### Configuration
 
-Edit **`lyra/config.py`** — all settings are at the top of that file:
+All settings live in `lyra/config.py` with sensible defaults.  Any value
+can be overridden via environment variable (in `.env` or CI secrets).
 
-| Setting | Default | Description |
-|---|---|---|
-| `NUM_MONTHS` | `1` | How many calendar months to scan backward |
-| `TEST_MODE` | `False` | Extract: scan 1 month and 1 booking only (fast smoke test) |
-| `DRY_RUN` | `False` | Bill & keys: preview only, don't save codes or send emails |
-| `OUTPUT_CSV` | `"bookings.csv"` | Where extract writes and bill reads |
-| `HEADLESS` | `False` | Run Chromium without a visible window |
-| `BILLING_AMOUNT` | `"350"` | SEK per guest-apartment night |
-| `BILLING_AVITEXT` | `"Gästlägenhet"` | Prefix for the invoice line item text |
-| `UPCOMING_DAYS` | `13` | How many days ahead `upcoming` scans |
-| `UPCOMING_OUTPUT_CSV` | `"upcoming_bookings.csv"` | Where `upcoming` writes and `keys` reads |
-| `LOCK_NAME` | `"guest_apartment"` | Yale smart lock name in Seam |
-| `SEAM_API_KEY` | (from `.env`) | Seam API key for access code creation |
-| `GMAIL_USER` | (from `.env`) | Gmail address that sends the codes |
-| `GMAIL_APP_PASSWORD` | (from `.env`) | Gmail app password for SMTP |
-| `SENDER_NAME` | `"Anton Frost"` | Name shown in the email From field |
-| `DAILY_LOOKAHEAD` | `6` | Days to scan (tomorrow + 5 = max booking length) |
+| Setting | Default | Env override | Description |
+|---|---|---|---|
+| `HEADLESS` | `True` | `HEADLESS=false` | Run Chromium without a visible window |
+| `NUM_MONTHS` | `10` | `NUM_MONTHS` | How many months `extract` scans backward |
+| `TEST_MODE` | `False` | `TEST_MODE=true` | Extract: 1 month + 1 booking (fast smoke test) |
+| `DRY_RUN` | `False` | `DRY_RUN=true` | Preview only, no codes/emails/billing |
+| `OUTPUT_CSV` | `bookings.csv` | `OUTPUT_CSV` | Where extract writes and bill reads |
+| `BILLING_AMOUNT` | `350` | `BILLING_AMOUNT` | SEK per guest-apartment night |
+| `BILLING_AVITEXT` | `Gästlägenhet` | `BILLING_AVITEXT` | Prefix for invoice line items |
+| `BILLING_ACCOUNT` | `3250` | `BILLING_ACCOUNT` | JM account code |
+| `UPCOMING_DAYS` | `13` | `UPCOMING_DAYS` | Days ahead `upcoming` scans |
+| `UPCOMING_OUTPUT_CSV` | `upcoming_bookings.csv` | `UPCOMING_OUTPUT_CSV` | Where `upcoming` writes |
+| `LOCK_NAME` | `guest_apartment` | `LOCK_NAME` | Yale lock name in Seam |
+| `SENDER_NAME` | `Anton Frost` | `SENDER_NAME` | From name in emails |
+| `DAILY_LOOKAHEAD` | `6` | `DAILY_LOOKAHEAD` | Days to scan (tomorrow + 5) |
+
+Secrets (`LYRA_EMAIL`, `LYRA_PASSWORD`, `JM_EMAIL`, `JM_PASSWORD`,
+`SEAM_API_KEY`, `GMAIL_USER`, `GMAIL_APP_PASSWORD`) have no defaults and
+must be set in `.env`.  Missing secrets are caught early with a clear
+error message listing which ones are needed.
 
 ### Output
 
