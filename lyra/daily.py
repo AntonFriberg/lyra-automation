@@ -334,7 +334,6 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
             value=option_value,
         )
         page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(300)
 
         add_btn = page.get_by_role("button", name="Skapa nytt tillägg")
         add_btn.wait_for(state="visible")
@@ -351,7 +350,6 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
 
         page.get_by_role("button", name="Spara ").click()
         page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(300)
 
         cutoff_date = datum
         billed += 1

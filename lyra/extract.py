@@ -99,7 +99,15 @@ def _extract_booking(page: Page, index: int) -> dict[str, str]:
     """Click a calendar booking, read modal fields, close modal.
 
     Returns *telefon*, *epost*, *lagenhetsnummer*, and *datum* (ISO 8601).
+    Raises ``RuntimeError`` if *index* is out of range (FullCalendar DOM
+    changed or booking count mismatch).
     """
+    count = page.locator("a.unavailable").count()
+    if index >= count:
+        raise RuntimeError(
+            f"Expected at least {index + 1} unavailable bookings, "
+            f"found {count} — FullCalendar DOM may have changed."
+        )
     page.evaluate(
         """(idx) => {
             document.querySelectorAll('a.unavailable')[idx].click();

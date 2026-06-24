@@ -296,7 +296,6 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
         # matching the billing-form combobox which is also a <select>)
         page.locator('[data-test="form-select"]').select_option(value=option_value)
         page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(300)
 
         # 2. Create the billing entry
         add_btn = page.get_by_role("button", name="Skapa nytt tillägg")
@@ -319,7 +318,6 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
         else:
             page.get_by_role("button", name="Spara ").click()
             page.wait_for_load_state("networkidle")
-            page.wait_for_timeout(300)
             cutoff_date = datum  # advance so a restart won't re-bill
 
     log.info("Done — processed %d bookings", len(bookings))
