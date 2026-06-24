@@ -21,7 +21,9 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Run tests
+      - name: Run tests + lint
         run: |
           uv sync --frozen
+          uv run ruff check .
+          uv run ruff format --check .
           uv run pytest tests/ -q
