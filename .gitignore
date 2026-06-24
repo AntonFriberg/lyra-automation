@@ -2,7 +2,7 @@
 .env
 
 # Output
-bookings.csv
+*.csv
 
 # Python-generated files
 __pycache__/
@@ -16,4 +16,3 @@ wheels/
 .venv
 .claude/
 .pytest_cache/
-old_bookings.csv
