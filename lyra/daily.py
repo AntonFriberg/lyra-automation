@@ -214,7 +214,10 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
         )
 
         start_dt, end_dt = _compute_times(stay)
-        code_name = f"Gästlägenhet: {stay['name']} ({stay['start_date']})"
+        code_name = (
+            f"Gästlägenhet: {stay['name']} "
+            f"({stay['lagenhetsnummer']}) {stay['start_date']}"
+        )
 
         # Skip if this stay's time window overlaps any existing code.
         # The lock only serves one apartment, so any overlap means the
