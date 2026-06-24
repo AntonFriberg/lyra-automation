@@ -1,4 +1,4 @@
-# Production image for Cloud Run Jobs.
+# Production image — build and run locally or in CI.
 # Build:  docker build -t lyra-daily .
 # Run:    docker run --rm --env-file .env lyra-daily
 #
@@ -12,18 +12,21 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-# Install Python dependencies
+# Copy the full application (including pyproject.toml and lyra/)
 COPY pyproject.toml uv.lock README.md ./
-RUN mkdir -p lyra && touch lyra/__init__.py
-RUN uv sync --frozen --no-dev
-
-# Install Chromium with all system dependencies (~300 MB)
-RUN uv run playwright install --with-deps chromium
-
-# Copy application code
 COPY lyra/ ./lyra/
 
-# Production defaults (overridable via Cloud Run env vars)
+# Install Python dependencies (package is present, no workarounds needed)
+RUN uv sync --frozen --no-dev
+
+# Install Chromium OS dependencies as root, then the browser binary as
+# the non-root user so Playwright can find it at runtime.
+RUN uv run playwright install-deps chromium
+RUN useradd -m lyra && chown -R lyra:lyra /app
+USER lyra
+RUN uv run playwright install chromium
+
+# Production defaults (overridable via env vars)
 ENV HEADLESS="true"
 # Unset the NixOS workaround — Playwright's own Chromium works here
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=""
