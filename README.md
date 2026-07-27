@@ -179,17 +179,6 @@ codes and already-billed dates.
    clicks *Spara*.  Skips if already billed, prints debug output for every
    match decision.
 
-## Deployment tools (Nix flake)
-
-A dev shell with Docker for building and testing the container locally:
-
-```bash
-nix develop              # bash
-nix develop --command fish  # fish (if fish is your login shell)
-```
-
-The shell prints available tool versions and first-time setup commands.
-
 ## Deployment (Docker)
 
 The `daily` subcommand is packaged as a Docker container.  Playwright's

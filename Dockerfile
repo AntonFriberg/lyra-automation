@@ -1,9 +1,6 @@
 # Production image — build and run locally or in CI.
 # Build:  docker build -t lyra-daily .
 # Run:    docker run --rm --env-file .env lyra-daily
-#
-# The Playwright-bundled Chromium works inside this image because
-# python:3.13-slim provides a compatible glibc (unlike NixOS).
 
 FROM python:3.13-slim
 
@@ -28,7 +25,5 @@ RUN uv run playwright install chromium
 
 # Production defaults (overridable via env vars)
 ENV HEADLESS="true"
-# Unset the NixOS workaround — Playwright's own Chromium works here
-ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=""
 
 CMD ["uv", "run", "python", "-m", "lyra", "daily"]
