@@ -5,6 +5,7 @@ import pytest
 from lyra.bill import (
     _find_best_match,
     _is_board_booking,
+    _latest_billed_date,
     _levenshtein,
     _name_distance,
     _parse_lgh,
@@ -367,3 +368,136 @@ class TestIsBoardBooking:
     )
     def test_normal_booking_not_board(self, lgh):
         assert _is_board_booking(lgh) is False
+
+
+# ---------------------------------------------------------------------------
+# _latest_billed_date (mocked page / table rows)
+# ---------------------------------------------------------------------------
+
+
+class _FakeCell:
+    """Minimal stub of a Playwright table cell (``<td>`` or ``<th>``)."""
+
+    def __init__(self, text: str):
+        self._text = text
+
+    def inner_text(self) -> str:
+        return self._text
+
+
+class _FakeRow:
+    """Minimal stub of a Playwright table row (``<tr>``).
+
+    Its ``locator("td, th")`` returns the cells passed at construction time.
+    """
+
+    def __init__(self, cells: list[_FakeCell]):
+        self._cells = cells
+
+    def locator(self, _selector: str):
+        """Return a locator whose ``.all()`` yields the row's cells."""
+        loc = _FakeLocator()
+        loc._all = self._cells
+        return loc
+
+
+class _FakeLocator:
+    """Minimal stub returning a canned list from ``.all()``."""
+
+    _all: list = []
+
+    def all(self) -> list:
+        return self._all
+
+
+def _page_with_table(mocker, rows: list[list[str]]):
+    """Return a mocked Playwright ``page`` whose ``table tr`` elements
+    yield *rows*, each a list of cell text strings.
+
+    The first row is typically the header (``<th>``) and subsequent rows
+    are data rows (``<td>``).  ``_latest_billed_date`` reads ``cells[1]``
+    (the rubric column) from every row.
+    """
+    fake_rows = [_FakeRow([_FakeCell(t) for t in row]) for row in rows]
+    tr_locator = _FakeLocator()
+    tr_locator._all = fake_rows
+    page = mocker.Mock()
+    page.locator.return_value = tr_locator
+    return page
+
+
+class TestLatestBilledDate:
+    """Tests for _latest_billed_date using a mocked Playwright page."""
+
+    def test_single_row_returns_its_date(self, mocker):
+        page = _page_with_table(
+            mocker,
+            [
+                ["Header", "Rubric"],
+                ["", "Gästlägenhet 2026-07-15"],
+            ],
+        )
+        assert _latest_billed_date(page) == "2026-07-15"
+
+    def test_multiple_rows_returns_max_date(self, mocker):
+        page = _page_with_table(
+            mocker,
+            [
+                ["Header", "Rubric"],
+                ["", "Gästlägenhet 2026-07-10"],
+                ["", "Gästlägenhet 2026-07-20"],
+                ["", "Gästlägenhet 2026-07-15"],
+            ],
+        )
+        assert _latest_billed_date(page) == "2026-07-20"
+
+    def test_manual_old_entry_at_top_does_not_lower_cutoff(self, mocker):
+        """A manual entry for an old date at the top must not become the cutoff."""
+        page = _page_with_table(
+            mocker,
+            [
+                ["Header", "Rubric"],
+                ["", "Gästlägenhet 2026-06-01"],   # manual old entry
+                ["", "Gästlägenhet 2026-07-20"],   # latest real entry
+                ["", "Gästlägenhet 2026-07-18"],
+            ],
+        )
+        assert _latest_billed_date(page) == "2026-07-20"
+
+    def test_descending_dates_still_returns_first(self, mocker):
+        """When entries are already newest-first, the max is still correct."""
+        page = _page_with_table(
+            mocker,
+            [
+                ["Header", "Rubric"],
+                ["", "Gästlägenhet 2026-07-20"],
+                ["", "Gästlägenhet 2026-07-18"],
+            ],
+        )
+        assert _latest_billed_date(page) == "2026-07-20"
+
+    def test_no_gastlagenhet_rows_returns_sentinel(self, mocker):
+        page = _page_with_table(
+            mocker,
+            [
+                ["Header", "Rubric"],
+                ["", "Some other avitext 2026-07-15"],
+            ],
+        )
+        assert _latest_billed_date(page) == "0000-00-00"
+
+    def test_empty_table_returns_sentinel(self, mocker):
+        page = _page_with_table(mocker, [])
+        assert _latest_billed_date(page) == "0000-00-00"
+
+    def test_mixed_avitexts_only_matches_gastlagenhet(self, mocker):
+        page = _page_with_table(
+            mocker,
+            [
+                ["Header", "Rubric"],
+                ["", "Some other entry 2026-08-01"],
+                ["", "Gästlägenhet 2026-07-15"],
+                ["", "Another entry 2026-08-02"],
+            ],
+        )
+        assert _latest_billed_date(page) == "2026-07-15"

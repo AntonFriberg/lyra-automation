@@ -267,18 +267,24 @@ def _find_best_match(
 
 
 def _latest_billed_date(page: Page) -> str:
-    """Return the latest date from the global billing table (newest-first).
+    """Return the latest billed date from the global billing table.
 
-    Before any apartment is selected the table shows all recent billing
-    entries across all apartments.  Since each date can only have one
-    booking, the first Gästlägenhet row gives us the cutoff: any booking
-    on or before this date has already been billed.
+    Scans the entire visible table for ``Gästlägenhet`` entries and
+    returns the maximum (most recent) date.  Because ISO 8601 dates
+    (``YYYY-MM-DD``) sort lexicographically, ``max()`` works directly.
 
-    Returns ``"0000-00-00"`` if the table has no Gästlägenhet entries.
+    The table is rendered newest-creation-first by the JM portal, but
+    a manual entry for an old stay date can appear before newer entries.
+    Taking the max across all rows is robust to this — manual entries
+    never drag the cutoff backwards.
+
+    Returns ``"0000-00-00"`` if the table has no Gästlägenhet entries,
+    which causes every booking to be billed (safe default).
     """
     date_pattern = re.compile(
         rf"{re.escape(BILLING_AVITEXT)}\s+(\d{{4}}-\d{{2}}-\d{{2}})",
     )
+    latest = "0000-00-00"
     rows = page.locator("table tr").all()
     for row in rows:
         cells = row.locator("td, th").all()
@@ -287,9 +293,10 @@ def _latest_billed_date(page: Page) -> str:
         rubric = cells[1].inner_text().strip()
         m = date_pattern.search(rubric)
         if m:
-            return m.group(1)
-    log.warning("no %s entries found in billing table", BILLING_AVITEXT)
-    return "0000-00-00"
+            latest = max(latest, m.group(1))
+    if latest == "0000-00-00":
+        log.warning("no %s entries found in billing table", BILLING_AVITEXT)
+    return latest
 
 
 def _login_jmhome(page: Page) -> None:
