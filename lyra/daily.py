@@ -16,6 +16,7 @@ from seam import Seam
 from . import launch_browser
 from .bill import (
     _find_best_match,
+    _is_board_booking,
     _latest_billed_date,
     _login_jmhome,
 )
@@ -320,9 +321,13 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
             log.info("    SKIP: already billed (cutoff: %s)", cutoff_date)
             continue
 
+        if _is_board_booking(lgh):
+            log.info("    SKIP: board booking (lgh=%r) — no billing", lgh)
+            continue
+
         match = _find_best_match(page, name, lgh)
         if not match:
-            log.info("    SKIP: no apartment match")
+            log.info("    SKIP: no reliable apartment match (see details above)")
             continue
         option_value, _ = match
 

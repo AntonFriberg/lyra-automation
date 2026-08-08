@@ -27,20 +27,31 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _parse_lgh(lgh: str) -> tuple[str, str] | None:
-    """Extract ``(prefix, last4)`` from a lagenhetsnummer like ``"8-1301"``.
+def _is_board_booking(lgh: str) -> bool:
+    """Return ``True`` if the apartment number indicates a board booking.
 
-    Returns ``None`` if no 4-digit number is present (e.g. ``"Styrelsen"``),
-    which signals that this booking should be skipped.
+    Board members may book the guest apartment without a regular apartment
+    number (e.g. ``"Styrelsen"``).  These stays should *not* be billed.
+    Matching is case-insensitive and matches anywhere in the string so
+    variants like ``"styrelsen"``, ``"Styrelsen "``, or ``"Brf Styrelsen"``
+    all work.
+    """
+    return "styrelse" in lgh.lower()
+
+
+def _parse_lgh(lgh: str) -> tuple[str | None, str] | None:
+    """Extract ``(prefix, digits)`` from a lagenhetsnummer.
+
+    Returns:
+    - ``(prefix, all_digits)`` for 5+ digits (e.g. ``"8-1301"`` → ``("8", "81301")``)
+    - ``(None, last4)`` for exactly 4 digits (e.g. ``"1005"`` → ``(None, "1005")``)
+    - ``None`` for <4 digits or non-numeric — caller falls back to name-only matching
     """
     digits = re.sub(r"[^0-9]", "", lgh)  # "8-1301" → "81301"
-    # Need at least 5 digits for prefix + 4-digit suffix.
-    # A bare 4-digit number ("6102") can't be matched reliably.
-    if len(digits) < 5:
+    if len(digits) < 4:
         return None
-    last4 = digits[-4:]
-    prefix = digits[-5]
-    return prefix, last4
+    prefix = digits[-5] if len(digits) >= 5 else None
+    return prefix, digits
 
 
 def _parse_option(option_text: str) -> tuple[str, str]:
@@ -82,6 +93,33 @@ def _levenshtein(a: str, b: str) -> int:
     return prev[-1]
 
 
+# ---------------------------------------------------------------------------
+# Name-distance helper
+# ---------------------------------------------------------------------------
+
+
+def _name_distance(csv_name: str, opt_names: str) -> int:
+    """Minimum Levenshtein distance from *csv_name* to any occupant name.
+
+    *opt_names* may be a comma-separated list like ``"Alice A, Bob B"``.
+    Matching against individual names avoids penalising multi-occupant
+    apartments where the CSV only carries one guest.
+    """
+    if not opt_names:
+        return 999
+    names = [n.strip() for n in opt_names.split(",")]
+    return min(_levenshtein(csv_name, n) for n in names)
+
+
+# Threshold for name-only matching (mode C — no apartment number).
+_NAME_ONLY_MAX_DIST = 5
+
+
+# ---------------------------------------------------------------------------
+# Apartment matching
+# ---------------------------------------------------------------------------
+
+
 def _find_best_match(
     page: Page,
     csv_name: str,
@@ -89,25 +127,74 @@ def _find_best_match(
 ) -> tuple[str, str] | None:
     """Return ``(option_value, option_text)`` of the best-matching apartment.
 
-    Strategy:
-    1. Filter by last 4 digits of the lagenhetsnummer (mandatory).
-    2. If a prefix digit exists (e.g. "8" in "8-1301"), prefer matches
-       where that digit appears before the last 4 in the option number.
-    3. Among remaining candidates, pick the one with the smallest
-       Levenshtein distance between the CSV name and the option's names.
+    Three matching modes, depending on what *_parse_lgh* returns:
 
-    Prints debug info for each booking.
+    * **Full** (5+ digits) — filter by *all* digits, prefer prefix match,
+      pick smallest name distance.
+    * **Partial** (4 digits) — filter by the 4 digits, pick smallest name
+      distance (no prefix preference available).
+    * **Name-only** (<4 digits or non-numeric) — match against every option
+      by name alone; requires distance ≤ *_NAME_ONLY_MAX_DIST*.
+
     Returns ``None`` if no match is found.
     """
     parsed = _parse_lgh(csv_lgh)
+
+    # --- Name-only fallback (no usable apartment number) -----------------
     if parsed is None:
         log.info(
-            "  Matching '%s' / '%s': NO 4-DIGIT NUMBER → SKIPPED",
+            "  Matching '%s' / '%s': no apartment number — name-only fallback",
             csv_name,
             csv_lgh,
         )
+        if not csv_name:
+            log.warning("    SKIP: no name to match on")
+            return None
+
+        options = page.locator('[data-test="form-select"] option').all()
+        candidates: list[dict] = []
+        for opt in options:
+            value = opt.get_attribute("value") or ""
+            text = opt.inner_text().strip()
+            if value == "-1" or not text:
+                continue
+            _opt_num, opt_names = _parse_option(text)
+            if not opt_names:
+                continue
+            candidates.append(
+                {
+                    "value": value,
+                    "text": text,
+                    "names": opt_names,
+                    "dist": _name_distance(csv_name, opt_names),
+                }
+            )
+
+        if not candidates:
+            log.warning("    SKIP: no options with names found")
+            return None
+
+        candidates.sort(key=lambda c: c["dist"])
+        best = candidates[0]
+
+        if best["dist"] <= _NAME_ONLY_MAX_DIST:
+            log.warning(
+                "    NAME-ONLY MATCH: '%s' (dist=%d) — verify manually",
+                best["text"],
+                best["dist"],
+            )
+            return best["value"], best["text"]
+
+        log.warning(
+            "    SKIP: no name match within threshold (best dist=%d, "
+            "threshold=%d)",
+            best["dist"],
+            _NAME_ONLY_MAX_DIST,
+        )
         return None
-    prefix, last4 = parsed
+
+    # --- Digit-based matching -------------------------------------------
+    prefix, digits = parsed
 
     options = page.locator('[data-test="form-select"] option').all()
     candidates: list[dict] = []  # [{value, text, number, names, dist, has_prefix}]
@@ -118,7 +205,8 @@ def _find_best_match(
         if value == "-1" or not text:
             continue
         opt_number, opt_names = _parse_option(text)
-        if not opt_number or opt_number[-4:] != last4:
+        # Filter by the FULL digit string — more precise than last-4 only.
+        if not opt_number or not opt_number.endswith(digits):
             continue
         candidates.append(
             {
@@ -126,28 +214,29 @@ def _find_best_match(
                 "text": text,
                 "number": opt_number,
                 "names": opt_names,
-                "has_prefix": prefix and prefix == opt_number[-5:-4],
-                "dist": _levenshtein(csv_name, opt_names),
+                "has_prefix": prefix is not None
+                and prefix == opt_number[-5:-4],
+                "dist": _name_distance(csv_name, opt_names),
             }
         )
 
     log.info(
-        "  Matching '%s' / '%s'  (prefix=%r last4=%s):",
+        "  Matching '%s' / '%s'  (prefix=%r digits=%s):",
         csv_name,
         csv_lgh,
         prefix,
-        last4,
+        digits,
     )
 
     if not candidates:
-        log.info("    NO MATCH — no option ending in %s", last4)
+        log.info("    NO MATCH — no option ending in %s", digits)
         return None
 
-    # Separate prefix matches from others
+    # Separate prefix matches from others (only meaningful for 5+ digits)
     with_prefix = [c for c in candidates if c["has_prefix"]]
     pool = with_prefix if with_prefix else candidates
 
-    # Pick the one with smallest Levenshtein distance
+    # Pick the one with smallest name distance
     pool.sort(key=lambda c: c["dist"])
     best = pool[0]
 
@@ -285,10 +374,15 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
             log.info("  SKIPPED: already billed (cutoff: %s)", cutoff_date)
             continue
 
+        # Skip board bookings — these should never be billed.
+        if _is_board_booking(lgh):
+            log.info("  SKIPPED: board booking (lgh=%r) — no billing", lgh)
+            continue
+
         # 1. Match and select apartment
         match = _find_best_match(page, name, lgh)
         if not match:
-            log.info("  SKIPPED: no apartment match")
+            log.info("  SKIPPED: no reliable apartment match (see details above)")
             continue
         option_value, _ = match
 
