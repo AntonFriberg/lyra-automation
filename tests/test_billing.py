@@ -457,8 +457,8 @@ class TestLatestBilledDate:
             mocker,
             [
                 ["Header", "Rubric"],
-                ["", "Gästlägenhet 2026-06-01"],   # manual old entry
-                ["", "Gästlägenhet 2026-07-20"],   # latest real entry
+                ["", "Gästlägenhet 2026-06-01"],  # manual old entry
+                ["", "Gästlägenhet 2026-07-20"],  # latest real entry
                 ["", "Gästlägenhet 2026-07-18"],
             ],
         )

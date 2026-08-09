@@ -186,8 +186,7 @@ def _find_best_match(
             return best["value"], best["text"]
 
         log.warning(
-            "    SKIP: no name match within threshold (best dist=%d, "
-            "threshold=%d)",
+            "    SKIP: no name match within threshold (best dist=%d, threshold=%d)",
             best["dist"],
             _NAME_ONLY_MAX_DIST,
         )
@@ -214,8 +213,7 @@ def _find_best_match(
                 "text": text,
                 "number": opt_number,
                 "names": opt_names,
-                "has_prefix": prefix is not None
-                and prefix == opt_number[-5:-4],
+                "has_prefix": prefix is not None and prefix == opt_number[-5:-4],
                 "dist": _name_distance(csv_name, opt_names),
             }
         )
