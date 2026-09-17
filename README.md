@@ -165,8 +165,14 @@ tomorrow + ``DAILY_LOOKAHEAD - 1`` days, groups consecutive nights into
 stays, creates access codes and sends emails only for stays that **start**
 tomorrow, then enters billing for each night.
 
+A final phase moves the maximum booking date (see below).  It is
+**guaranteed** to run: phases 1-4 return early whenever they find nothing
+to do, and the max-date step sits in a `finally` so it still executes on
+those paths — and on a raised exception.  A stale booking horizon would
+otherwise shrink what residents can book without anyone noticing.
+
 Idempotent by design — re-running the same day skips already-created
-codes and already-billed dates.
+codes, already-billed dates, and an already-correct max booking date.
 
 ### Max date (`lyra maxdate`)
 

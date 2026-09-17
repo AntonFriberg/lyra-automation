@@ -10,7 +10,7 @@ import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from playwright.sync_api import Playwright
+from playwright.sync_api import Page, Playwright
 from seam import Seam
 
 from . import launch_browser
@@ -43,6 +43,7 @@ from .keys import (
     _group_stays,
     _send_email,
 )
+from .maxdate import _ensure_max_date
 
 log = logging.getLogger(__name__)
 
@@ -51,11 +52,15 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def run_daily(playwright: Playwright) -> None:  # noqa: C901
-    """Run the full daily pipeline: extract → keys → bill.
+def run_daily(playwright: Playwright) -> None:
+    """Run the full daily pipeline: extract → keys → bill → max booking date.
 
     Window: tomorrow through tomorrow + ``DAILY_LOOKAHEAD - 1`` days.
     Only stays that **start** tomorrow get codes and billing.
+
+    The max-booking-date step runs last and is *guaranteed*: it must happen
+    even when the phases above bail out early or raise, because a stale
+    booking horizon silently shrinks what residents can book.
     """
     validate(
         "LYRA_EMAIL",
@@ -66,6 +71,27 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
         "GMAIL_USER",
         "GMAIL_APP_PASSWORD",
     )
+
+    # --- Shared browser ---------------------------------------------------
+    context, page = launch_browser(playwright)
+    try:
+        _run_phases(page)
+    finally:
+        # Nested finally so the browser is still closed if phase 5 fails.
+        # If both raise, Python chains the tracebacks and neither is lost.
+        try:
+            log.info("--- Phase 5: Max booking date ---")
+            _ensure_max_date(page)
+        finally:
+            context.close()
+
+
+def _run_phases(page: Page) -> None:  # noqa: C901
+    """Phases 1-4: extract → group stays → codes and emails → billing.
+
+    Returns early, without raising, whenever a phase finds nothing to do.
+    ``run_daily``'s ``finally`` still runs the max-booking-date step.
+    """
     today = date.today()
     tomorrow = today + timedelta(days=1)
     window_end = tomorrow + timedelta(days=DAILY_LOOKAHEAD - 1)
@@ -75,9 +101,6 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
         tomorrow.isoformat(),
         window_end.isoformat(),
     )
-
-    # --- Shared browser ---------------------------------------------------
-    context, page = launch_browser(playwright)
 
     # ==================================================================
     # Phase 1 — Extract tomorrow's window from Smart Brf
@@ -127,7 +150,6 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
 
     if not all_bookings:
         log.info("  Nothing to do — exiting.")
-        context.close()
         return
 
     # Write daily CSV (handy for debugging; reused by billing)
@@ -149,7 +171,6 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
 
     if not tomorrow_stays:
         log.info("  No stay starts tomorrow — exiting.")
-        context.close()
         return
 
     for s in tomorrow_stays:
@@ -167,7 +188,6 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
 
     if DRY_RUN:
         log.warning("=== DRY RUN: no codes, emails, or billing ===")
-        context.close()
         return
 
     # ==================================================================
@@ -179,7 +199,6 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
     devices = seam.devices.list(search=LOCK_NAME)
     if not devices:
         log.error("no device matching '%s'", LOCK_NAME)
-        context.close()
         return
     device = devices[0]
     log.info("  Lock: %s (%s)", device.display_name, device.device_id)
@@ -268,7 +287,6 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
     # ==================================================================
     if DRY_RUN:
         log.warning("=== DRY RUN: skipping billing ===")
-        context.close()
         return
     log.info("--- Phase 4: Billing ---")
 
@@ -345,8 +363,7 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
     # Done
     # ==================================================================
     log.info(
-        "Done — %d stay(s) processed, %d billing entr(ies) created",
+        "Phases 1-4 done — %d stay(s) processed, %d billing entr(ies) created",
         len(tomorrow_stays),
         billed,
     )
-    context.close()
