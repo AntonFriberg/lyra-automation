@@ -239,6 +239,23 @@ def _find_best_match(
     pool.sort(key=lambda c: c["dist"])
     best = pool[0]
 
+    # This mode has no minimum-confidence gate: any option whose digits match
+    # gets billed, even when no occupant name could be parsed (dist=999).  Name
+    # the choice explicitly, escalating to WARNING past the same threshold the
+    # name-only mode enforces, so a questionable apartment is visible in the
+    # run log rather than only inferable from the billing table afterwards.
+    detail = "lgh=%s '%s' (name dist=%d, %d of %d candidate(s))" % (
+        best["number"],
+        best["names"][:50],
+        best["dist"],
+        len(pool),
+        len(candidates),
+    )
+    if best["dist"] > _NAME_ONLY_MAX_DIST:
+        log.warning("    MATCH: %s — WEAK, verify manually", detail)
+    else:
+        log.info("    MATCH: %s", detail)
+
     # Debug: show all candidates considered
     for c in candidates[:8]:
         flags = []
