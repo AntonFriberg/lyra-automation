@@ -5,7 +5,8 @@ import logging
 import re
 from pathlib import Path
 
-from playwright.sync_api import Page, Playwright
+from playwright.sync_api import Locator, Page, Playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from . import launch_browser
 from .config import (
@@ -324,6 +325,90 @@ def _login_jmhome(page: Page) -> None:
     page.wait_for_timeout(300)
 
 
+# Timeout for the save click and for the form to close afterwards.  Bounded
+# rather than left at Playwright's 30 s default so a stuck save fails with a
+# diagnosable message well inside the CI job's 15-minute budget.
+_SAVE_TIMEOUT_MS = 15_000
+
+
+def _log_save_failure(page: Page, save: Locator) -> None:
+    """Log why the *Spara* click could not proceed.
+
+    There is no screenshot/trace capture anywhere in this project, so this is
+    the only way to tell the failure modes apart from a CI log:
+
+    * ``0 matching button(s)`` — the button was renamed or re-roled.
+    * ``enabled=False`` — the form is still invalid, e.g. a field needs blurring.
+    * ``enabled=True`` — the element is obscured or never stabilises.
+    """
+    count = save.count()
+    log.error(
+        "    Spara click timed out — %d matching button(s), url=%s", count, page.url
+    )
+    for i in range(min(count, 5)):
+        btn = save.nth(i)
+        log.error(
+            "      [%d] text=%r visible=%s enabled=%s",
+            i,
+            btn.inner_text()[:40],
+            btn.is_visible(),
+            btn.is_enabled(),
+        )
+
+
+def _create_billing_entry(page: Page, datum: str) -> str:
+    """Fill and save one billing entry; returns the avitext used.
+
+    Shared by :func:`run_bill` and ``run_daily`` so both paths behave
+    identically — they previously carried verbatim copies of this block.
+    """
+    add_btn = page.get_by_role("button", name="Skapa nytt tillägg")
+    add_btn.wait_for(state="visible")
+    add_btn.click()
+    page.wait_for_timeout(300)
+
+    page.get_by_role("combobox").select_option(BILLING_ACCOUNT)
+    page.wait_for_timeout(200)
+
+    avitext = f"{BILLING_AVITEXT} {datum}"
+    page.get_by_role("textbox", name="Ange avitext").fill(avitext)
+    page.get_by_role("textbox", name="Ange avitext").press("Tab")
+    page.get_by_role("textbox", name="Ange belopp").fill(BILLING_AMOUNT)
+    # Blur the amount field before saving.  The portal keeps *Spara* disabled
+    # until the field's validation has run on blur, so clicking straight after
+    # fill() blocks on the "enabled" actionability check until it times out.
+    page.get_by_role("textbox", name="Ange belopp").press("Tab")
+
+    log.info("  Creating: avitext='%s' amount=%s SEK", avitext, BILLING_AMOUNT)
+
+    if DRY_RUN:
+        page.get_by_role("button", name="Avbryt").click()
+        page.wait_for_timeout(300)
+        return avitext
+
+    # Substring match on purpose: the button's accessible name is
+    # "Spara " (Font Awesome save glyph in a private-use codepoint),
+    # and the extra glyph has no ASCII form.
+    save = page.get_by_role("button", name="Spara")
+    try:
+        save.click(timeout=_SAVE_TIMEOUT_MS)
+    except PlaywrightTimeoutError:
+        _log_save_failure(page, save)
+        raise
+
+    # Wait for the form to close so "Skapa nytt tillägg" is available for the
+    # next booking.  Preferred over wait_for_load_state("networkidle"), which
+    # never settles on a page that polls.
+    try:
+        page.get_by_role("textbox", name="Ange avitext").wait_for(
+            state="hidden", timeout=_SAVE_TIMEOUT_MS
+        )
+    except PlaywrightTimeoutError:
+        log.warning("    Save clicked but the entry form did not close — continuing")
+
+    return avitext
+
+
 # ---------------------------------------------------------------------------
 # Main orchestration
 # ---------------------------------------------------------------------------
@@ -397,27 +482,8 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
         page.wait_for_load_state("networkidle")
 
         # 2. Create the billing entry
-        add_btn = page.get_by_role("button", name="Skapa nytt tillägg")
-        add_btn.wait_for(state="visible")
-        add_btn.click()
-        page.wait_for_timeout(300)
-
-        page.get_by_role("combobox").select_option(BILLING_ACCOUNT)
-        page.wait_for_timeout(200)
-
-        avitext = f"{BILLING_AVITEXT} {datum}"
-        page.get_by_role("textbox", name="Ange avitext").fill(avitext)
-        page.get_by_role("textbox", name="Ange avitext").press("Tab")
-        page.get_by_role("textbox", name="Ange belopp").fill(BILLING_AMOUNT)
-
-        log.info("  Creating: avitext='%s' amount=%s SEK", avitext, BILLING_AMOUNT)
-        if DRY_RUN:
-            page.get_by_role("button", name="Avbryt").click()
-            page.wait_for_timeout(300)
-        else:
-            page.get_by_role("button", name="Spara ").click()
-            page.wait_for_load_state("networkidle")
-            cutoff_date = datum  # advance so a restart won't re-bill
+        _create_billing_entry(page, datum)
+        cutoff_date = datum  # advance so a restart won't re-bill
 
     log.info("Done — processed %d bookings", len(bookings))
     context.close()

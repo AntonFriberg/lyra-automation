@@ -15,15 +15,14 @@ from seam import Seam
 
 from . import launch_browser
 from .bill import (
+    _create_billing_entry,
     _find_best_match,
     _is_board_booking,
     _latest_billed_date,
     _login_jmhome,
 )
 from .config import (
-    BILLING_ACCOUNT,
     BILLING_AMOUNT,
-    BILLING_AVITEXT,
     DAILY_LOOKAHEAD,
     DRY_RUN,
     LOCK_NAME,
@@ -336,21 +335,7 @@ def run_daily(playwright: Playwright) -> None:  # noqa: C901
         )
         page.wait_for_load_state("networkidle")
 
-        add_btn = page.get_by_role("button", name="Skapa nytt tillägg")
-        add_btn.wait_for(state="visible")
-        add_btn.click()
-        page.wait_for_timeout(300)
-
-        page.get_by_role("combobox").select_option(BILLING_ACCOUNT)
-        page.wait_for_timeout(200)
-
-        avitext = f"{BILLING_AVITEXT} {datum}"
-        page.get_by_role("textbox", name="Ange avitext").fill(avitext)
-        page.get_by_role("textbox", name="Ange avitext").press("Tab")
-        page.get_by_role("textbox", name="Ange belopp").fill(BILLING_AMOUNT)
-
-        page.get_by_role("button", name="Spara ").click()
-        page.wait_for_load_state("networkidle")
+        avitext = _create_billing_entry(page, datum)
 
         cutoff_date = datum
         billed += 1
