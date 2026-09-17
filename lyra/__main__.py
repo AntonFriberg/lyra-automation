@@ -8,6 +8,7 @@ from .bill import run_bill
 from .daily import run_daily
 from .extract import run_extract, run_upcoming
 from .keys import run_keys
+from .maxdate import run_maxdate
 
 
 def main() -> None:
@@ -19,6 +20,10 @@ def main() -> None:
     sub.add_parser("bill", help="Enter billing from bookings.csv into JM portal")
     sub.add_parser("keys", help="Create Seam access codes and email them to guests")
     sub.add_parser("daily", help="Daily pipeline: extract + keys + bill in one run")
+    sub.add_parser(
+        "maxdate",
+        help="Move the Smart Brf maximum booking date one year ahead",
+    )
 
     args = parser.parse_args()
 
@@ -33,6 +38,8 @@ def main() -> None:
             run_keys(playwright)
         elif args.command == "daily":
             run_daily(playwright)
+        elif args.command == "maxdate":
+            run_maxdate(playwright)
 
 
 if __name__ == "__main__":

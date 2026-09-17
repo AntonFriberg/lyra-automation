@@ -49,6 +49,12 @@ BASE_URL = (
     "/att-bo-i-lyra/bokning-av-gemensamma-ytor/gastlagenheten#"
 )
 
+# --- Admin (Statamic CP) ------------------------------------------------------
+# The admin panel has its own Grannskap SSO login — the public-site session
+# does not carry over.  The entry page itself is reached by clicking through
+# the sidebar (Bokning → Gästlägenheten); see lyra/maxdate._open_entry.
+ADMIN_LOGIN_URL = "https://lyra-i-lund.smartbrf.se/admin/auth/login"
+
 # --- Billing settings ---------------------------------------------------------
 JM_BILLING_URL = (
     "https://portal.jmathome.se/kundportal/customer-invoices/billing/extra-costs"
@@ -72,3 +78,9 @@ SENDER_NAME = os.environ.get("SENDER_NAME", "Anton Frost")
 
 # --- Daily production pipeline ------------------------------------------------
 DAILY_LOOKAHEAD = int(os.environ.get("DAILY_LOOKAHEAD", "6"))
+
+# How far ahead the guest apartment stays bookable.  The admin field is a
+# fixed date, so the daily pipeline rewrites it to today + this many years.
+# Set to 0 for a read-only live smoke test: the target lands in the past, the
+# never-move-backwards rule makes the run skip, and nothing is written.
+MAX_BOOKING_YEARS = int(os.environ.get("MAX_BOOKING_YEARS", "1"))

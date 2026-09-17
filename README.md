@@ -49,8 +49,9 @@ cp .env.example .env
 uv run python -m lyra extract   # pull historic bookings → bookings.csv
 uv run python -m lyra upcoming  # pull next 13 days → upcoming_bookings.csv
 uv run python -m lyra keys      # create access codes & email guests
-uv run python -m lyra daily     # production: extract + keys + bill in one run
+uv run python -m lyra daily     # production: extract + keys + bill + max date
 uv run python -m lyra bill      # enter billing from bookings.csv → JM portal
+uv run python -m lyra maxdate   # push the max booking date a year ahead
 ```
 
 Or with the console script:
@@ -61,6 +62,7 @@ uv run lyra upcoming
 uv run lyra keys
 uv run lyra daily
 uv run lyra bill
+uv run lyra maxdate
 ```
 
 ### Configuration
@@ -83,6 +85,7 @@ can be overridden via environment variable (in `.env` or CI secrets).
 | `LOCK_NAME` | `guest_apartment` | `LOCK_NAME` | Yale lock name in Seam |
 | `SENDER_NAME` | `Anton Frost` | `SENDER_NAME` | From name in emails |
 | `DAILY_LOOKAHEAD` | `6` | `DAILY_LOOKAHEAD` | Days to scan (tomorrow + 5) |
+| `MAX_BOOKING_YEARS` | `1` | `MAX_BOOKING_YEARS` | Years ahead the guest apartment stays bookable |
 
 Secrets (`LYRA_EMAIL`, `LYRA_PASSWORD`, `JM_EMAIL`, `JM_PASSWORD`,
 `SEAM_API_KEY`, `GMAIL_USER`, `GMAIL_APP_PASSWORD`) have no defaults and
@@ -165,6 +168,35 @@ tomorrow, then enters billing for each night.
 Idempotent by design — re-running the same day skips already-created
 codes and already-billed dates.
 
+### Max date (`lyra maxdate`)
+
+The guest apartment has a **maximum booking date** ("Öppet för bokning
+t.o.m.") in the Smart Brf admin panel.  It is a *fixed* date — the system
+has no support for relative dates — so it has to be pushed forward or the
+bookable window shrinks every day.
+
+1. **Admin login** — the panel has its own Grannskap SSO login; the
+   public-site session used by `extract` does not carry over.
+2. **Read** — the stored date, from the Baremetrics Calendar widget's
+   `contenteditable` display.
+3. **Decide** — update only when the stored value is behind
+   `today + MAX_BOOKING_YEARS`.  A value *ahead* of the target is left
+   alone: a wider window is harmless, whereas moving the date backwards
+   could invalidate bookings residents have already made.
+4. **Write** — type the target and commit it with Enter, then read the
+   widget back *before* saving, so a clamped or reverted value aborts
+   rather than being persisted.
+5. **Verify** — reload the page and re-read.  The reload is the only proof
+   the write persisted.
+
+The date is never set from a relative offset, so a field that has fallen
+far behind — skipped runs, a failed run, or someone clearing it — catches
+up in a single run.
+
+Set `MAX_BOOKING_YEARS=0` for a read-only live smoke test: the target
+lands in the past, the never-move-backwards rule makes the run skip, and
+nothing is written.
+
 ### Bill (`lyra bill`)
 
 1. **Login** — navigates to the JM billing portal and waits for the
@@ -239,12 +271,13 @@ Actions tab to trigger a daily run manually.
 lyra-automation/
 ├── lyra/
 │   ├── __init__.py    # shared browser launcher
-│   ├── __main__.py    # CLI entry point (5 subcommands)
+│   ├── __main__.py    # CLI entry point (6 subcommands)
 │   ├── config.py      # all settings — the only file you normally edit
 │   ├── utils.py       # helpers: .env loading, Swedish date parsing
 │   ├── extract.py     # calendar extraction logic
 │   ├── bill.py        # billing entry logic
 │   ├── keys.py        # Seam access codes + email delivery
+│   ├── maxdate.py     # keep the admin max booking date a year ahead
 │   └── daily.py       # production pipeline orchestrator
 ├── tests/
 │   └── test_billing.py

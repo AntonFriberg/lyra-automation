@@ -369,6 +369,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "playwright" },
+    { name = "python-dateutil" },
     { name = "python-dotenv" },
     { name = "seam" },
 ]
@@ -383,6 +384,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "playwright", specifier = ">=1.60.0" },
+    { name = "python-dateutil", specifier = ">=2.9.0" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "seam", specifier = ">=1.145.0" },
 ]
