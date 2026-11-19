@@ -384,7 +384,7 @@ def _create_billing_entry(page: Page, datum: str) -> str:
     add_btn.click()
     page.wait_for_timeout(300)
 
-    page.get_by_role("combobox").select_option(BILLING_ACCOUNT)
+    page.locator('select[formcontrolname="category"]').select_option(BILLING_ACCOUNT)
     page.wait_for_timeout(200)
 
     avitext = f"{BILLING_AVITEXT} {datum}"
