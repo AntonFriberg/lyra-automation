@@ -168,171 +168,106 @@ class TestNameDistance:
 
 
 # ---------------------------------------------------------------------------
-# _find_best_match (mocked page)
+# _find_best_match
 # ---------------------------------------------------------------------------
 
 
-class _FakeOption:
-    """Minimal stub of a Playwright Locator element."""
-
-    def __init__(self, value: str, text: str):
-        self._value = value
-        self._text = text
-
-    def get_attribute(self, _name: str) -> str:
-        return self._value
-
-    def inner_text(self) -> str:
-        return self._text
-
-
-def _page_with_options(mocker, options: list[tuple[str, str]]):
-    """Return a mocked Playwright ``page`` whose ``[data-test="form-select"]
-    option`` locator yields *options* as ``(value, text)`` tuples."""
-    fake_opts = [_FakeOption(v, t) for v, t in options]
-    locator = mocker.Mock()
-    locator.all.return_value = fake_opts
-    page = mocker.Mock()
-    page.locator.return_value = locator
-    return page
-
-
 class TestFindBestMatch:
-    """Tests for _find_best_match using a mocked Playwright page."""
+    """Tests for _find_best_match over a list of dropdown labels."""
 
     # Mode A — full digit match with prefix --------------------------------
 
-    def test_prefix_match_preferred(self, mocker):
+    def test_prefix_match_preferred(self):
         """When two options share the same digits, the one with matching
         prefix is selected even if its name distance is slightly worse."""
-        page = _page_with_options(
-            mocker,
-            [
-                ("1", "Area 3-81301, Street 57 (Alice A)"),
-                ("2", "Area 3-71301, Street 55 (Alice Andersson)"),
-            ],
-        )
+        options = [
+            "Area 3-81301, Street 57 (Alice A)",
+            "Area 3-71301, Street 55 (Alice Andersson)",
+        ]
         # "8-1301" → digits "81301", prefix "8"
-        result = _find_best_match(page, "Alice Andersson", "8-1301")
-        assert result is not None
-        value, _text = result
+        result = _find_best_match(options, "Alice Andersson", "8-1301")
         # "3-81301" has prefix "8" at position -5, should be selected
-        assert value == "1"
+        assert result == options[0]
 
-    def test_full_digits_filter_out_wrong_building(self, mocker):
+    def test_full_digits_filter_out_wrong_building(self):
         """An option whose last 4 match but full digits don't is excluded."""
-        page = _page_with_options(
-            mocker,
-            [
-                ("1", "Area 3-71301, Street 55 (Alice A)"),
-            ],
-        )
+        options = [
+            "Area 3-71301, Street 55 (Alice A)",
+        ]
         # "8-1301" → digits "81301".  "3-71301" ends with "1301" but
         # not "81301" — should be excluded by the full-digit filter.
-        result = _find_best_match(page, "Alice A", "8-1301")
+        result = _find_best_match(options, "Alice A", "8-1301")
         assert result is None
 
     # Mode B — 4-digit match (no prefix) ----------------------------------
 
-    def test_four_digit_single_candidate(self, mocker):
+    def test_four_digit_single_candidate(self):
         """A 4-digit number with exactly one matching option is selected."""
-        page = _page_with_options(
-            mocker,
-            [
-                ("1", "Area 3-1005, Street 42 (Rebecka af Forselles)"),
-            ],
-        )
-        result = _find_best_match(page, "Rebecka af Forselles", "1005")
-        assert result is not None
-        value, _text = result
-        assert value == "1"
+        options = [
+            "Area 3-1005, Street 42 (Rebecka af Forselles)",
+        ]
+        result = _find_best_match(options, "Rebecka af Forselles", "1005")
+        assert result == options[0]
 
-    def test_four_digit_multiple_candidates_picks_best_name(self, mocker):
+    def test_four_digit_multiple_candidates_picks_best_name(self):
         """With multiple last4 matches, the best name distance wins."""
-        page = _page_with_options(
-            mocker,
-            [
-                ("1", "Area 3-1005, Street 42 (Some Other)"),
-                ("2", "Area 3-1005, Street 43 (Rebecka af Forselles)"),
-            ],
-        )
-        result = _find_best_match(page, "Rebecka af Forselles", "1005")
-        assert result is not None
-        value, _text = result
-        assert value == "2"
+        options = [
+            "Area 3-1005, Street 42 (Some Other)",
+            "Area 3-1005, Street 43 (Rebecka af Forselles)",
+        ]
+        result = _find_best_match(options, "Rebecka af Forselles", "1005")
+        assert result == options[1]
 
-    def test_four_digit_no_candidate(self, mocker):
+    def test_four_digit_no_candidate(self):
         """No option ends with the 4-digit number."""
-        page = _page_with_options(
-            mocker,
-            [
-                ("1", "Area 3-9999, Street 42 (Alice A)"),
-            ],
-        )
-        result = _find_best_match(page, "Alice A", "1005")
+        options = [
+            "Area 3-9999, Street 42 (Alice A)",
+        ]
+        result = _find_best_match(options, "Alice A", "1005")
         assert result is None
 
     # Mode C — name-only fallback -----------------------------------------
 
-    def test_name_only_exact_match(self, mocker):
+    def test_name_only_exact_match(self):
         """Exact name match finds the right apartment."""
-        page = _page_with_options(
-            mocker,
-            [
-                ("1", "Area 3-81301, Street 57 (Alice Andersson)"),
-            ],
-        )
-        result = _find_best_match(page, "Alice Andersson", "Styrelsen")
-        assert result is not None
-        value, _text = result
-        assert value == "1"
+        options = [
+            "Area 3-81301, Street 57 (Alice Andersson)",
+        ]
+        result = _find_best_match(options, "Alice Andersson", "Styrelsen")
+        assert result == options[0]
 
-    def test_name_only_within_threshold(self, mocker):
+    def test_name_only_within_threshold(self):
         """A name with a small typo (dist ≤ 5) is still matched."""
-        page = _page_with_options(
-            mocker,
-            [
-                ("1", "Area 3-81301, Street 57 (Alice Andersson)"),
-            ],
-        )
+        options = [
+            "Area 3-81301, Street 57 (Alice Andersson)",
+        ]
         # "Alice Anderrson" has dist 1 from "Alice Andersson"
-        result = _find_best_match(page, "Alice Anderrson", "Styrelsen")
+        result = _find_best_match(options, "Alice Anderrson", "Styrelsen")
         assert result is not None
 
-    def test_name_only_exceeds_threshold(self, mocker):
+    def test_name_only_exceeds_threshold(self):
         """A completely different name (dist > 5) is rejected."""
-        page = _page_with_options(
-            mocker,
-            [
-                ("1", "Area 3-81301, Street 57 (Alice Andersson)"),
-            ],
-        )
-        result = _find_best_match(page, "Bob Builder", "Styrelsen")
+        options = [
+            "Area 3-81301, Street 57 (Alice Andersson)",
+        ]
+        result = _find_best_match(options, "Bob Builder", "Styrelsen")
         assert result is None
 
-    def test_name_only_no_name_in_csv(self, mocker):
+    def test_name_only_no_name_in_csv(self):
         """Empty CSV name cannot be matched."""
-        page = _page_with_options(
-            mocker,
-            [
-                ("1", "Area 3-81301, Street 57 (Alice Andersson)"),
-            ],
-        )
-        result = _find_best_match(page, "", "Styrelsen")
+        options = [
+            "Area 3-81301, Street 57 (Alice Andersson)",
+        ]
+        result = _find_best_match(options, "", "Styrelsen")
         assert result is None
 
-    def test_name_only_multi_occupant(self, mocker):
+    def test_name_only_multi_occupant(self):
         """Match against one of multiple occupants in the option."""
-        page = _page_with_options(
-            mocker,
-            [
-                ("1", "Area 3-81301, Street 57 (Alice A, Bob B)"),
-            ],
-        )
-        result = _find_best_match(page, "Bob B", "Styrelsen")
-        assert result is not None
-        value, _text = result
-        assert value == "1"
+        options = [
+            "Area 3-81301, Street 57 (Alice A, Bob B)",
+        ]
+        result = _find_best_match(options, "Bob B", "Styrelsen")
+        assert result == options[0]
 
 
 # ---------------------------------------------------------------------------

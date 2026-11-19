@@ -5,7 +5,7 @@ import logging
 import re
 from pathlib import Path
 
-from playwright.sync_api import Locator, Page, Playwright
+from playwright.sync_api import Locator, Page, Playwright, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from . import launch_browser
@@ -122,11 +122,13 @@ _NAME_ONLY_MAX_DIST = 5
 
 
 def _find_best_match(
-    page: Page,
+    options: list[str],
     csv_name: str,
     csv_lgh: str,
-) -> tuple[str, str] | None:
-    """Return ``(option_value, option_text)`` of the best-matching apartment.
+) -> str | None:
+    """Return the label of the best-matching apartment among *options*.
+
+    *options* are the apartment dropdown labels from :func:`_apartment_options`.
 
     Three matching modes, depending on what *_parse_lgh* returns:
 
@@ -152,19 +154,13 @@ def _find_best_match(
             log.warning("    SKIP: no name to match on")
             return None
 
-        options = page.locator('[data-test="form-select"] option').all()
         candidates: list[dict] = []
-        for opt in options:
-            value = opt.get_attribute("value") or ""
-            text = opt.inner_text().strip()
-            if value == "-1" or not text:
-                continue
+        for text in options:
             _opt_num, opt_names = _parse_option(text)
             if not opt_names:
                 continue
             candidates.append(
                 {
-                    "value": value,
                     "text": text,
                     "names": opt_names,
                     "dist": _name_distance(csv_name, opt_names),
@@ -184,7 +180,7 @@ def _find_best_match(
                 best["text"],
                 best["dist"],
             )
-            return best["value"], best["text"]
+            return best["text"]
 
         log.warning(
             "    SKIP: no name match within threshold (best dist=%d, threshold=%d)",
@@ -196,21 +192,15 @@ def _find_best_match(
     # --- Digit-based matching -------------------------------------------
     prefix, digits = parsed
 
-    options = page.locator('[data-test="form-select"] option').all()
-    candidates: list[dict] = []  # [{value, text, number, names, dist, has_prefix}]
+    candidates: list[dict] = []  # [{text, number, names, dist, has_prefix}]
 
-    for opt in options:
-        value = opt.get_attribute("value") or ""
-        text = opt.inner_text().strip()
-        if value == "-1" or not text:
-            continue
+    for text in options:
         opt_number, opt_names = _parse_option(text)
         # Filter by the FULL digit string — more precise than last-4 only.
         if not opt_number or not opt_number.endswith(digits):
             continue
         candidates.append(
             {
-                "value": value,
                 "text": text,
                 "number": opt_number,
                 "names": opt_names,
@@ -274,7 +264,7 @@ def _find_best_match(
     if len(candidates) > 8:
         log.debug("    ... and %d more candidates", len(candidates) - 8)
 
-    return best["value"], best["text"]
+    return best["text"]
 
 
 # ---------------------------------------------------------------------------
@@ -325,21 +315,58 @@ def _login_jmhome(page: Page) -> None:
     page.locator('[data-test="login-userpw-submit"]').click()
     page.wait_for_load_state("networkidle")
 
-    # The apartment dropdown is populated asynchronously.  Wait until the
-    # option count stabilises (the page has ~90 apartments, so >10 is a
-    # safe signal that the list has finished loading).  Also acts as a
-    # login-verification check — if we never see >10 options, login failed.
+    # The apartment list (~90 entries) is loaded asynchronously, so seeing
+    # more than 10 options also verifies that login succeeded.
     try:
-        page.wait_for_function(
-            "() => document.querySelectorAll('select option').length > 10",
-            timeout=10_000,
-        )
+        _apartment_options(page)
     except Exception as exc:
         raise RuntimeError(
             "Login to JM Home failed — apartment dropdown not populated. "
-            "Check JM_EMAIL / JM_PASSWORD in .env."
+            "Check JM_EMAIL / JM_PASSWORD in .env, or whether the portal UI "
+            "has changed."
         ) from exc
-    page.wait_for_timeout(300)
+
+
+# The apartment picker is a PrimeNG <p-select>, not a native <select>: its
+# options only exist in a body-level overlay while the dropdown is open, and
+# carry no value attribute — each option is identified by its label.
+_APARTMENT_SELECT = '[data-test="form-select"]'
+_APARTMENT_OPTIONS = '.ws-select-overlay [role="option"]'
+_SHOW_ALL_LABEL = "-- Visa alla --"
+
+
+def _open_apartment_dropdown(page: Page, timeout: float = 10_000) -> None:
+    """Open the apartment dropdown and wait until its options have loaded."""
+    page.locator(_APARTMENT_SELECT).click(timeout=timeout)
+    page.wait_for_function(
+        f"() => document.querySelectorAll('{_APARTMENT_OPTIONS}').length > 10",
+        timeout=timeout,
+    )
+
+
+def _apartment_options(page: Page) -> list[str]:
+    """Return the labels of all apartments in the dropdown.
+
+    Labels look like ``"Lund Pentagonen 3-81301, Street 57 (Firstname Lastname)"``.
+    The ``-- Visa alla --`` (show all) entry is excluded.
+    """
+    _open_apartment_dropdown(page)
+    labels = page.locator(_APARTMENT_OPTIONS).evaluate_all(
+        "els => els.map(e => (e.getAttribute('aria-label') || e.innerText).trim())"
+    )
+    page.keyboard.press("Escape")
+    page.locator(_APARTMENT_OPTIONS).first.wait_for(state="detached")
+    return [label for label in labels if label and label != _SHOW_ALL_LABEL]
+
+
+def _select_apartment(page: Page, label: str) -> None:
+    """Select the apartment with *label* and wait for its table to load."""
+    _open_apartment_dropdown(page)
+    page.get_by_role("option", name=label, exact=True).click()
+    expect(page.locator(f'{_APARTMENT_SELECT} [role="combobox"]')).to_have_text(
+        label, timeout=10_000
+    )
+    page.wait_for_load_state("networkidle")
 
 
 # Timeout for the save click and for the form to close afterwards.  Bounded
@@ -487,16 +514,12 @@ def run_bill(playwright: Playwright) -> None:  # noqa: C901
             continue
 
         # 1. Match and select apartment
-        match = _find_best_match(page, name, lgh)
+        match = _find_best_match(_apartment_options(page), name, lgh)
         if not match:
             log.info("  SKIPPED: no reliable apartment match (see details above)")
             continue
-        option_value, _ = match
 
-        # Select the apartment from the dropdown (use data-test to avoid
-        # matching the billing-form combobox which is also a <select>)
-        page.locator('[data-test="form-select"]').select_option(value=option_value)
-        page.wait_for_load_state("networkidle")
+        _select_apartment(page, match)
 
         # 2. Create the billing entry
         _create_billing_entry(page, datum)

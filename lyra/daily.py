@@ -15,11 +15,13 @@ from seam import Seam
 
 from . import launch_browser
 from .bill import (
+    _apartment_options,
     _create_billing_entry,
     _find_best_match,
     _is_board_booking,
     _latest_billed_date,
     _login_jmhome,
+    _select_apartment,
 )
 from .config import (
     BILLING_AMOUNT,
@@ -342,16 +344,12 @@ def _run_phases(page: Page) -> None:  # noqa: C901
             log.info("    SKIP: board booking (lgh=%r) — no billing", lgh)
             continue
 
-        match = _find_best_match(page, name, lgh)
+        match = _find_best_match(_apartment_options(page), name, lgh)
         if not match:
             log.info("    SKIP: no reliable apartment match (see details above)")
             continue
-        option_value, _ = match
 
-        page.locator('[data-test="form-select"]').select_option(
-            value=option_value,
-        )
-        page.wait_for_load_state("networkidle")
+        _select_apartment(page, match)
 
         avitext = _create_billing_entry(page, datum)
 
